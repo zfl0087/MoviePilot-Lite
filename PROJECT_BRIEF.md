@@ -1,6 +1,6 @@
 # MoviePilot Lite — Project Brief
 
-> 状态：已达成产品范围共识，尚未开始精简实现  
+> 状态：已建立固定能力配置，API 路由导入前门控实施中
 > 基线日期：2026-07-17  
 > 项目性质：基于 MoviePilot v2 的非官方私有精简构建
 
@@ -110,7 +110,7 @@ P115StrmHelper（115网盘STRM助手）是目标 115 工作流的必装插件，
 - AI Agent、LLM、MCP、Skills、语音处理及相关模型依赖。
 - 工作流编辑器、执行引擎及其后台任务；插件自身的事件和定时任务不在此列。
 - CookieCloud、CloakBrowser、Playwright 浏览器内核、虚拟显示、验证码 OCR 和 FlareSolverr。
-- PostgreSQL、Redis、多用户、用户注册、角色系统、SSO 和辅助认证。
+- PostgreSQL、Redis、多用户、用户注册、角色系统、SSO 和辅助认证（`auxiliary-auth`）。
 - Radarr/Sonarr 兼容接口及 CookieCloud 接口。
 - `ffmpeg`；依赖 FFmpeg 转码的第三方插件标记为不兼容。
 - 非必要的官方统计和数据上报；只保留元数据、插件市场、网盘授权/API 等明确必要的外联。
@@ -172,7 +172,7 @@ CI 使用模拟服务验证通用流程；真实 115 Token 不进入 GitHub Acti
 | MoviePilot 前端 | `v2` | `435e9ecfdd4febf791fd581b3be9233816cebf7f` |
 | MoviePilot 官方插件 | `main` | `4e11007980fd7703302adfa4474e494b64244b5c` |
 
-两个私有空仓库已经创建，并且 Codex GitHub App 仅获准访问这两个仓库。尚未向私有仓库推送源码，尚未创建 Lite 补丁，尚未构建镜像。
+两个私有仓库已经创建，并且 Codex GitHub App 仅获准访问这两个仓库。后端 `lite` 分支已建立固定能力配置；当前继续实施 API 路由导入前门控。尚未构建或发布 Lite 镜像。
 
 ## 12. 项目协作规则
 
@@ -189,4 +189,3 @@ CI 使用模拟服务验证通用流程；真实 115 Token 不进入 GitHub Acti
 - `docs/UPSTREAM_SYNC.md`：分支、上游同步、冲突处理和发布流程。
 - `docs/COMPATIBILITY.md`：插件、配置、API 和迁移兼容矩阵。
 - `openspec/`：每项具体改动的提案、任务、规范增量和验收场景。
-

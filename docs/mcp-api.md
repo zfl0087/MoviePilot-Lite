@@ -2,6 +2,8 @@
 
 MoviePilot 实现了标准的 **Model Context Protocol (MCP)**，允许 AI 智能体（如 Claude, GPT 等）直接调用 MoviePilot 的功能进行媒体管理、搜索、订阅和下载。
 
+> **MoviePilot Lite 说明**：固定 Lite 能力配置版本 2 不注册 MCP、Agent、LLM、PT 搜索、下载、订阅、工作流、内容发现、Radarr/Sonarr 或 CookieCloud API。本文件保留上游接口说明用于源码同步，但 Lite 正常启动时 `/api/v1/mcp`、`/api/v1/message/agent`、`/api/v1/llm`、`/api/v1/openai/v1`、`/api/v1/anthropic/v1`、`/api/v1/site`、`/api/v1/search`、`/api/v1/download`、`/api/v1/subscribe`、`/api/v1/workflow`、`/api/v1/discover`、`/api/v1/recommend`、`/api/v3` 和 `/cookiecloud` 均返回 404。管理员登录、`API_TOKEN` 以及保留的网盘、元数据、整理、插件、消息通知和媒体服务器 REST API 不受该门控影响。
+
 ## 1. 基础信息
 
 *   **基础路径**: `/api/v1/mcp`

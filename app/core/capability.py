@@ -33,12 +33,13 @@ class Capability(str, Enum):
     POSTGRESQL = "postgresql"
     MULTI_USER = "multi-user"
     SSO = "sso"
+    AUXILIARY_AUTH = "auxiliary-auth"
     ARR_COMPAT = "arr-compat"
     FFMPEG_TRANSCODING = "ffmpeg-transcoding"
 
 
 LITE_PROFILE_NAME = "lite"
-LITE_PROFILE_VERSION = 1
+LITE_PROFILE_VERSION = 2
 
 LITE_CAPABILITIES: frozenset[Capability] = frozenset(
     {

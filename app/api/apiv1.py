@@ -1,38 +1,54 @@
+from importlib import import_module
+
 from fastapi import APIRouter
 
-from app.api.endpoints import auth, login, user, webhook, message, agent, site, subscribe, \
-    media, douban, search, plugin, tmdb, history, system, download, dashboard, \
-    transfer, mediaserver, bangumi, storage, discover, recommend, workflow, torrent, mcp, mfa, openai, anthropic, llm, notification
+from app.core.capability import Capability, is_capability_enabled
 
-api_router = APIRouter()
-api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
-api_router.include_router(login.router, prefix="/login", tags=["login"])
-api_router.include_router(user.router, prefix="/user", tags=["user"])
-api_router.include_router(mfa.router, prefix="/mfa", tags=["mfa"])
-api_router.include_router(site.router, prefix="/site", tags=["site"])
-api_router.include_router(message.router, prefix="/message", tags=["message"])
-api_router.include_router(agent.router, prefix="/message/agent", tags=["agent"])
-api_router.include_router(webhook.router, prefix="/webhook", tags=["webhook"])
-api_router.include_router(subscribe.router, prefix="/subscribe", tags=["subscribe"])
-api_router.include_router(media.router, prefix="/media", tags=["media"])
-api_router.include_router(search.router, prefix="/search", tags=["search"])
-api_router.include_router(douban.router, prefix="/douban", tags=["douban"])
-api_router.include_router(tmdb.router, prefix="/tmdb", tags=["tmdb"])
-api_router.include_router(history.router, prefix="/history", tags=["history"])
-api_router.include_router(system.router, prefix="/system", tags=["system"])
-api_router.include_router(notification.router, prefix="/notification", tags=["notification"])
-api_router.include_router(llm.router, prefix="/llm", tags=["llm"])
-api_router.include_router(plugin.router, prefix="/plugin", tags=["plugin"])
-api_router.include_router(download.router, prefix="/download", tags=["download"])
-api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
-api_router.include_router(storage.router, prefix="/storage", tags=["storage"])
-api_router.include_router(transfer.router, prefix="/transfer", tags=["transfer"])
-api_router.include_router(mediaserver.router, prefix="/mediaserver", tags=["mediaserver"])
-api_router.include_router(bangumi.router, prefix="/bangumi", tags=["bangumi"])
-api_router.include_router(discover.router, prefix="/discover", tags=["discover"])
-api_router.include_router(recommend.router, prefix="/recommend", tags=["recommend"])
-api_router.include_router(workflow.router, prefix="/workflow", tags=["workflow"])
-api_router.include_router(torrent.router, prefix="/torrent", tags=["torrent"])
-api_router.include_router(mcp.router, prefix="/mcp", tags=["mcp"])
-api_router.include_router(openai.router, prefix="/openai/v1", tags=["openai"])
-api_router.include_router(anthropic.router, prefix="/anthropic/v1", tags=["anthropic"])
+
+_API_ROUTE_SPECS = (
+    ("auth", "/auth", "auth", Capability.AUXILIARY_AUTH),
+    ("login", "/login", "login", Capability.ADMIN_AUTH),
+    ("user", "/user", "user", Capability.ADMIN_AUTH),
+    ("mfa", "/mfa", "mfa", Capability.AUXILIARY_AUTH),
+    ("site", "/site", "site", Capability.PT_SITES),
+    ("message", "/message", "message", Capability.MESSAGING),
+    ("agent", "/message/agent", "agent", Capability.AGENT),
+    ("webhook", "/webhook", "webhook", Capability.SYSTEM),
+    ("subscribe", "/subscribe", "subscribe", Capability.SUBSCRIPTIONS),
+    ("media", "/media", "media", Capability.METADATA),
+    ("search", "/search", "search", Capability.TORRENT_SEARCH),
+    ("douban", "/douban", "douban", Capability.METADATA),
+    ("tmdb", "/tmdb", "tmdb", Capability.METADATA),
+    ("history", "/history", "history", Capability.MEDIA_ORGANIZATION),
+    ("system", "/system", "system", Capability.SYSTEM),
+    ("notification", "/notification", "notification", Capability.NOTIFICATIONS),
+    ("llm", "/llm", "llm", Capability.LLM),
+    ("plugin", "/plugin", "plugin", Capability.PLUGINS),
+    ("download", "/download", "download", Capability.DOWNLOADERS),
+    ("dashboard", "/dashboard", "dashboard", Capability.SYSTEM),
+    ("storage", "/storage", "storage", Capability.CLOUD_STORAGE),
+    ("transfer", "/transfer", "transfer", Capability.MEDIA_ORGANIZATION),
+    ("mediaserver", "/mediaserver", "mediaserver", Capability.MEDIA_SERVER),
+    ("bangumi", "/bangumi", "bangumi", Capability.METADATA),
+    ("discover", "/discover", "discover", Capability.CONTENT_DISCOVERY),
+    ("recommend", "/recommend", "recommend", Capability.CONTENT_DISCOVERY),
+    ("workflow", "/workflow", "workflow", Capability.WORKFLOW),
+    ("torrent", "/torrent", "torrent", Capability.DOWNLOADERS),
+    ("mcp", "/mcp", "mcp", Capability.MCP),
+    ("openai", "/openai/v1", "openai", Capability.LLM),
+    ("anthropic", "/anthropic/v1", "anthropic", Capability.LLM),
+)
+
+
+def _create_api_router() -> APIRouter:
+    """按固定 Lite 能力配置导入并注册主 API 路由"""
+    router = APIRouter()
+    for module_name, prefix, tag, capability in _API_ROUTE_SPECS:
+        if not is_capability_enabled(capability):
+            continue
+        endpoint_module = import_module(f"app.api.endpoints.{module_name}")
+        router.include_router(endpoint_module.router, prefix=prefix, tags=[tag])
+    return router
+
+
+api_router = _create_api_router()

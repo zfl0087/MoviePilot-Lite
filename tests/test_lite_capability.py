@@ -33,6 +33,7 @@ EXPECTED_ENABLED = {
 EXPECTED_DISABLED = {
     "agent",
     "arr-compat",
+    "auxiliary-auth",
     "browser-automation",
     "content-discovery",
     "cookiecloud",
@@ -72,6 +73,7 @@ def test_lite_capability_query_is_strict():
     assert is_capability_enabled(Capability.CLOUD_STORAGE)
     assert is_capability_enabled(Capability.METADATA)
     assert not is_capability_enabled(Capability.PT_SITE_AUTH)
+    assert not is_capability_enabled(Capability.AUXILIARY_AUTH)
     assert not is_capability_enabled(Capability.WORKFLOW)
 
     with pytest.raises(ValueError):
@@ -106,8 +108,7 @@ def test_lite_manifest_is_deterministic_and_isolated():
         "disabled": sorted(EXPECTED_DISABLED),
     }
     assert LITE_PROFILE_NAME == "lite"
-    assert isinstance(LITE_PROFILE_VERSION, int)
-    assert LITE_PROFILE_VERSION > 0
+    assert LITE_PROFILE_VERSION == 2
     assert json.loads(json.dumps(first, ensure_ascii=False)) == first
 
     first["profile"] = "modified"

@@ -30,7 +30,9 @@ Lite 使用唯一、不可由普通运行配置改写的能力配置。能力定
 `LITE_CAPABILITIES`、派生的 `LITE_DISABLED_CAPABILITIES`、
 `is_capability_enabled()` 和 `get_lite_capability_manifest()` 共同组成。
 机器清单固定输出配置名称、配置版本以及排序后的启用和禁用能力列表。
-该模块本身不接入路由、模块或启动服务；具体门控由后续 OpenSpec 分阶段实施。
+当前能力配置版本为 2；`auxiliary-auth` 明确归入禁用集合，用于辅助认证、MFA 和 PassKey 路由，且不影响管理员密码登录、`API_TOKEN` 或 115 OAuth/API。
+
+API 路由门控已经消费该配置：主 API 和独立兼容接口必须先检查能力，再导入对应端点模块。模块扫描、启动服务、后台任务、消息命令、依赖和前端门控仍由后续 OpenSpec 分阶段实施，不得因 API 已裁剪而宣称其他边界已经完成。
 
 ## 4. 能力门控
 

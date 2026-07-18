@@ -1,19 +1,26 @@
 ---
 name: moviepilot-api
-version: 2
+version: 3
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
-  with the bundled Python client. Covers MoviePilot HTTP endpoints across media
-  search, downloads, subscriptions, library management, site management, system
-  administration, plugins, workflows, and more. Prefer `moviepilot-cli` for
-  normal local MCP tool workflows; use this skill when the user explicitly asks
-  for HTTP API access, when an endpoint is not exposed as an MCP tool, or when
-  running in an environment where direct REST calls are the appropriate bridge.
+  with the bundled Python client. In MoviePilot Lite, only use retained storage,
+  metadata, organization, plugin, messaging, notification, media-server, login,
+  and system endpoints; disabled upstream endpoint references return 404.
 ---
 
 # MoviePilot REST API
 
 > All script paths are relative to this skill file.
+
+> **MoviePilot Lite capability gate:** profile version 2 does not register PT
+> site/auth, search, download, subscription, discovery, recommendation, Agent,
+> LLM, MCP, workflow, Servarr, CookieCloud, MFA, PassKey, or auxiliary-auth
+> routes. Do not call those sections or workflows when running against Lite,
+> even though their upstream reference is retained below for source-sync
+> traceability. Disabled paths return 404. The `/login`, `/storage`, `/media`,
+> `/douban`, `/tmdb`, `/bangumi`, `/history`, `/transfer`, `/plugin`, `/message`,
+> `/notification`, `/mediaserver`, `/webhook`, `/dashboard`, and `/system`
+> families remain available under `/api/v1` with their existing authentication.
 
 Use `scripts/mp-api.py` to call any MoviePilot REST API endpoint directly.
 
@@ -65,17 +72,17 @@ python scripts/mp-api.py <METHOD> <PATH> [key=value ...] [--json '<body>']
 - Both methods validate against the same `API_TOKEN` value.
 - Never print, summarize, or ask the user to paste the API key unless the script is being used outside the local project and no safer configuration source is available.
 
-### Examples
+### Lite-safe examples
 
 ```bash
 # GET with query params
 python scripts/mp-api.py GET /api/v1/media/search title="Avatar" type="movie"
 
-# POST with JSON body
-python scripts/mp-api.py POST /api/v1/download/add --json '{"torrent_url":"abc1234:1"}'
+# POST with query params
+python scripts/mp-api.py POST /api/v1/message/web text="status"
 
 # DELETE
-python scripts/mp-api.py DELETE /api/v1/subscribe/123
+python scripts/mp-api.py DELETE /api/v1/tmdb/cache/example-cache-key
 
 # Endpoints that require ?token= auth
 python scripts/mp-api.py GET /api/v1/dashboard/statistic2 --token-param
@@ -84,6 +91,8 @@ python scripts/mp-api.py GET /api/v1/dashboard/statistic2 --token-param
 ## Complete API Reference
 
 All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `{param}`.
+Sections covered by the Lite capability warning above are upstream-only and MUST
+NOT be called against MoviePilot Lite.
 
 ---
 
