@@ -1,17 +1,7 @@
 import inspect
-import sys
 from typing import Callable
 
 from app.helper.redis import RedisHelper, AsyncRedisHelper
-
-# SitesHelper涉及资源包拉取，提前引入并容错提示
-try:
-    from app.helper.sites import SitesHelper  # noqa
-except ImportError as e:
-    SitesHelper = None
-    error_message = f"错误: {str(e)}\n站点认证及索引相关资源导入失败，请尝试重建容器或手动拉取资源"
-    print(error_message, file=sys.stderr)
-    sys.exit(1)
 
 from app.utils.system import SystemUtils
 from app.log import logger
@@ -21,14 +11,9 @@ from app.core.event import EventManager
 from app.helper.thread import ThreadHelper
 from app.helper.display import DisplayHelper
 from app.helper.doh import DohHelper
-from app.helper.resource import ResourceHelper
-from app.helper.message import MessageHelper, stop_message
+from app.helper.message import stop_message
 from app.helper.server import MoviePilotServerHelper
 from app.db import close_database
-from app.db.systemconfig_oper import SystemConfigOper
-from app.command import CommandChain
-from app.schemas import Notification, NotificationType
-from app.schemas.types import SystemConfigKey
 from app.startup.agent_initializer import init_agent, stop_agent
 
 
@@ -95,38 +80,6 @@ def clear_package_tool_cache():
             logger.warning("清理包下载缓存失败：%s - %s", cache_path, err)
 
 
-def user_auth():
-    """
-    用户认证检查
-    """
-    sites_helper = SitesHelper()
-    if sites_helper.auth_level >= 2:
-        return
-    auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
-    status, msg = sites_helper.check_user(**auth_conf) if auth_conf else sites_helper.check_user()
-    if status:
-        logger.info(f"{msg} 用户认证成功")
-    else:
-        logger.info(f"用户认证失败，{msg}")
-
-
-def check_auth():
-    """
-    检查认证状态
-    """
-    if SitesHelper().auth_level < 2:
-        err_msg = "用户认证失败，站点相关功能将无法使用！"
-        MessageHelper().put(f"注意：{err_msg}", title="用户认证", role="system")
-        CommandChain().post_message(
-            Notification(
-                mtype=NotificationType.Manual,
-                title="MoviePilot用户认证",
-                text=err_msg,
-                link=settings.MP_DOMAIN('#/site')
-            )
-        )
-
-
 async def stop_modules():
     """
     服务关闭
@@ -162,12 +115,6 @@ def init_modules():
     DisplayHelper()
     # DoH
     DohHelper()
-    # 站点管理
-    SitesHelper()
-    # 资源包检测
-    ResourceHelper()
-    # 用户认证
-    user_auth()
     # 加载模块
     ModuleManager()
     # 启动事件消费
@@ -181,5 +128,3 @@ def init_modules():
     init_agent()
     # 启动前端服务
     start_frontend()
-    # 检查认证状态
-    check_auth()

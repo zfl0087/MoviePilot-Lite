@@ -9,7 +9,6 @@ from app.chain.user import UserChain
 from app.core import security
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.sites import SitesHelper  # noqa
 from app.helper.image import WallpaperHelper
 from app.schemas.types import SystemConfigKey
 
@@ -41,7 +40,7 @@ def login_access_token(
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
     # 用户等级
-    level = SitesHelper().auth_level
+    level = security.LITE_AUTH_LEVEL
     # 是否显示配置向导
     show_wizard = (
         not SystemConfigOper().get(SystemConfigKey.SetupWizardState)

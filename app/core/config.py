@@ -102,9 +102,6 @@ class ConfigModel(BaseModel):
     AUXILIARY_AUTH_ENABLE: bool = False
     # API密钥，需要更换
     API_TOKEN: Optional[str] = None
-    # 用户认证站点
-    AUTH_SITE: str = ""
-
     # ==================== 数据库配置 ====================
     # 数据库类型，支持 sqlite 和 postgresql，默认使用 sqlite
     DB_TYPE: str = "sqlite"

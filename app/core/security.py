@@ -23,6 +23,7 @@ from app.log import logger
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ALGORITHM = "HS256"
+LITE_AUTH_LEVEL = 1
 
 # OAuth2PasswordBearer 用于 JWT Token 认证
 oauth2_scheme_manual_error = OAuth2PasswordBearer(
@@ -84,7 +85,6 @@ def __create_superuser_token_payload() -> schemas.TokenPayload:
     # pylint: disable=import-outside-toplevel
     # pylint: disable=no-name-in-module
     from app.db.user_oper import UserOper
-    from app.helper.sites import SitesHelper  # noqa
 
     user = UserOper().get_by_name(settings.SUPERUSER)
     if not user or not user.is_superuser:
@@ -96,7 +96,7 @@ def __create_superuser_token_payload() -> schemas.TokenPayload:
         sub=user.id,
         username=user.name,
         super_user=user.is_superuser,
-        level=SitesHelper().auth_level,
+        level=LITE_AUTH_LEVEL,
         purpose="authentication",
     )
 

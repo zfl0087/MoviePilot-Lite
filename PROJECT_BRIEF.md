@@ -172,7 +172,7 @@ CI 使用模拟服务验证通用流程；真实 115 Token 不进入 GitHub Acti
 | MoviePilot 前端 | `v2` | `435e9ecfdd4febf791fd581b3be9233816cebf7f` |
 | MoviePilot 官方插件 | `main` | `4e11007980fd7703302adfa4474e494b64244b5c` |
 
-两个私有仓库已经创建，并且 Codex GitHub App 仅获准访问这两个仓库。后端 `lite` 分支已建立固定能力配置；当前继续实施 API 路由导入前门控。尚未构建或发布 Lite 镜像。
+两个私有仓库已经创建，并且 Codex GitHub App 仅获准访问这两个仓库。后端 `lite` 分支已建立固定能力配置和 API 路由导入前门控；当前已在运行时移除 `AUTH_SITE`、PT 在线认证及其启动副作用，并删除 CookieCloud 同步、用户认证检查、站点数据刷新三个系统任务。管理员登录、`API_TOKEN` 和资源 Token 固定使用本地等级 1，115 OAuth/API 保持独立。模块发现、消息命令、依赖、Docker 和前端裁剪仍待后续独立变更，尚未构建或发布 Lite 镜像。
 
 ## 12. 项目协作规则
 

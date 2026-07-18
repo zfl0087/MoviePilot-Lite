@@ -657,7 +657,6 @@ class TestPluginHelper:
         monkeypatch.setattr(plugin_manager, "_running_plugins", {})
         monkeypatch.setattr("app.core.plugin.settings", SimpleNamespace(VERSION_FLAG="v2"))
         monkeypatch.setattr("app.core.plugin.SystemConfigOper", lambda: SimpleNamespace(get=lambda _key: []))
-        monkeypatch.setattr("app.core.plugin.SitesHelper", lambda: SimpleNamespace(auth_level=1))
         monkeypatch.setattr(PluginHelper, "get_plugins", lambda _self, *_args: market_plugins)
 
         plugins = plugin_manager.get_plugins_from_market(REPO_URL)

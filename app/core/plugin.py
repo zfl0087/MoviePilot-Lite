@@ -4,7 +4,6 @@ import concurrent
 import concurrent.futures
 import importlib.util
 import inspect
-import os
 import posixpath
 import shutil
 import sys
@@ -27,10 +26,8 @@ from app.db.plugindata_oper import PluginDataOper
 from app.db.systemconfig_oper import SystemConfigOper
 from app.helper.server import MoviePilotServerHelper
 from app.helper.plugin import PluginHelper
-from app.helper.sites import SitesHelper  # noqa
 from app.log import logger
 from app.schemas.types import EventType, SystemConfigKey
-from app.utils.crypto import RSAUtils
 from app.utils.mixins import ConfigReloadMixin
 from app.utils.object import ObjectUtils
 from app.utils.singleton import Singleton
@@ -1847,44 +1844,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 plugin.auth_level = source.get("level")
             elif hasattr(source, "auth_level"):
                 plugin.auth_level = source.auth_level
-        # 如果 source 为空且 plugin 本身没有 auth_level，直接返回 True
-        elif not hasattr(plugin, "auth_level"):
+        # 没有认证等级的插件保持可用。
+        if not hasattr(plugin, "auth_level") or plugin.auth_level is None:
             return True
-
-        # auth_level 级别说明
-        # 1 - 所有用户可见
-        # 2 - 站点认证用户可见
-        # 3 - 站点&密钥认证可见
-        # 99 - 站点&特殊密钥认证可见
-        # 如果当前站点认证级别大于 1 且插件级别为 99，并存在插件公钥，说明为特殊密钥认证，通过密钥匹配进行认证
-        siteshelper = SitesHelper()
-        if siteshelper.auth_level > 1 and plugin.auth_level == 99 and hasattr(plugin, "plugin_public_key"):
-            plugin_id = plugin.id if isinstance(plugin, schemas.Plugin) else plugin.__name__
-            public_key = plugin.plugin_public_key
-            if public_key:
-                private_key = PluginManager.__get_plugin_private_key(plugin_id)
-                verify = RSAUtils.verify_rsa_keys(public_key=public_key, private_key=private_key)
-                return verify
-        # 如果当前站点认证级别小于插件级别，则返回 False
-        if siteshelper.auth_level < plugin.auth_level:
-            return False
-        return True
-
-    @staticmethod
-    def __get_plugin_private_key(plugin_id: str) -> Optional[str]:
-        """
-        根据插件标识获取对应的私钥
-        :param plugin_id: 插件标识
-        :return: 对应的插件私钥，如果未找到则返回 None
-        """
+        # Lite 不执行 PT 站点在线认证或私钥提权；只开放本地等级 0 和 1。
         try:
-            # 将插件标识转换为大写并构建环境变量名称
-            env_var_name = f"PLUGIN_{plugin_id.upper()}_PRIVATE_KEY"
-            private_key = os.environ.get(env_var_name)
-            return private_key
-        except Exception as e:
-            logger.debug(f"获取插件 {plugin_id} 的私钥时发生错误：{e}")
-            return None
+            return int(plugin.auth_level) in (0, 1)
+        except (TypeError, ValueError):
+            return False
 
     def clone_plugin(self, plugin_id: str, suffix: str, name: str, description: str,
                      version: str = None, icon: str = None) -> Tuple[bool, str]:
