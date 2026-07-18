@@ -64,6 +64,10 @@ pip install -r requirements-dev.in
 3. **工具依赖**：`pip-tools`、`uv`、`safety` 这类安装或审计工具不属于主程序运行依赖，按脚本或 CI 场景显式安装。
 4. **插件依赖**：由插件声明并在插件安装阶段处理，不直接并入主程序 `requirements.in`。
 
+MoviePilot Lite 的 `requirements.in` 固定不包含 Agent/LLM、PT/下载器、浏览器模拟、Redis/PostgreSQL 和 Windows 托盘的 24 个专属根依赖。为继续运行官方完整源码回归测试，这些包集中放在 `requirements-dev.in` 的 `Lite disabled upstream compatibility tests` 分组。开发环境中“能够导入”不能证明正式运行兼容；相关变更还必须在只安装 `requirements.in` 的干净环境验证。
+
+P115StrmHelper 等插件继续由显式管理员安装流程处理自身依赖。插件安装后增加的包属于部署插件状态，不得为了减少安装时间预装回主程序运行入口，也不得把开发依赖入口交给运行时依赖修复读取。
+
 ### 4. 准备资源与插件目录
 
 本地源码开发时，主程序需要读取资源文件和插件源码。相关文件需要放到主程序实际加载的目录下：

@@ -34,7 +34,7 @@ Lite 使用唯一、不可由普通运行配置改写的能力配置。能力定
 
 API 路由门控已经消费该配置：主 API 和独立兼容接口必须先检查能力，再导入对应端点模块。PT 用户认证运行链路也已完成首批裁剪：`AUTH_SITE` 不再生效，管理员认证上下文固定为本地等级 1，插件等级 2、3、99 不再通过在线认证或私钥提升，启动阶段不再初始化站点认证/索引资源，Scheduler 不再注册 CookieCloud 同步、用户认证检查和站点数据刷新任务，也不清理历史站点用户数据。
 
-模块发现已经完成两层导入前门控。顶层无条件保留 Bangumi、豆瓣、Fanart、FileManager、TMDB、TVDB；官方消息渠道和 Emby/Jellyfin/Plex 只按启用配置加载；PT、下载器、Redis、PostgreSQL、非目标媒体服务器及未知上游包默认拒绝。FileManager 始终保留 Local，U115、Alipan、Alist、Rclone、SMB 只在已配置或经过既有认证入口明确首次设置时精确加载。Notifications、MediaServers、Storages 集合变化由 ModuleManager 统一重建，避免服务模块重复初始化。生命周期、Scheduler、Command、MessageChain、Monitor 与 TransferChain 也已完成固定集合和导入隔离；依赖、Docker 和前端门控仍由后续 OpenSpec 分阶段实施，不得因当前裁剪而宣称完整 Lite 已经完成。
+模块发现已经完成两层导入前门控。顶层无条件保留 Bangumi、豆瓣、Fanart、FileManager、TMDB、TVDB；官方消息渠道和 Emby/Jellyfin/Plex 只按启用配置加载；PT、下载器、Redis、PostgreSQL、非目标媒体服务器及未知上游包默认拒绝。FileManager 始终保留 Local，U115、Alipan、Alist、Rclone、SMB 只在已配置或经过既有认证入口明确首次设置时精确加载。Notifications、MediaServers、Storages 集合变化由 ModuleManager 统一重建，避免服务模块重复初始化。生命周期、Scheduler、Command、MessageChain、Monitor 与 TransferChain 也已完成固定集合和导入隔离；Python 正式运行依赖已按同一能力边界收敛，Docker 系统包、镜像文件和前端门控仍由后续 OpenSpec 分阶段实施，不得因当前裁剪而宣称完整 Lite 已经完成。
 
 ## 4. 能力门控
 
@@ -101,7 +101,7 @@ API、消息和调度入口只负责身份认证、权限判断、参数解析�
 | 定时任务 | 只注册网盘、整理、插件及必要维护任务 |
 | 消息命令 | 保留官方身份与权限逻辑，裁掉 PT、下载、订阅和 Agent 动作 |
 | 外部服务 | 不初始化站点认证、Redis、浏览器内核、工作流或 Agent 服务 |
-| 依赖安装 | Lite 使用独立依赖入口，不安装已移除能力的专属依赖 |
+| 依赖安装 | `requirements.in` 是唯一正式运行入口；禁用源码兼容测试依赖只进入 `requirements-dev.in` |
 | Docker 构建 | 构建产物排除无用依赖、代码、资源和前端页面 |
 
 当前运行时固定矩阵如下：
@@ -114,6 +114,10 @@ API、消息和调度入口只负责身份认证、权限判断、参数解析�
 | 普通消息 | 保留渠道身份、插件输入与回调、固定命令、通知、`UserMessage` 和 `MessageAction`；115 分享链接原样交给插件消费者 |
 
 启动完成任务只写入本地系统状态并结束重启标记，不自动同步插件、不安装缺失依赖、不刷新插件市场、不启动 Workflow 或 Agent，也不发送使用统计。禁用或未知 Scheduler ID 明确返回失败，不能借手动运行接口临时恢复历史任务。
+
+正式运行依赖固定排除 Agent/LLM、PT/下载器、浏览器/虚拟显示、Redis/PostgreSQL 和 Windows 托盘的 24 个直接根依赖。开发入口继续安装这些包以运行官方禁用源码测试，但 Docker 正式运行、插件依赖修复和运行时自愈只读取 `requirements.in`/`requirements.txt`。上游重新加入任一固定禁止根时，依赖契约必须失败关闭并要求人工分类。
+
+Lite 数据库和缓存工厂在读取第三方后端前应用固定 capability：正式运行始终使用 `/config/user.db` 的 SQLite 和进程内缓存。历史 PostgreSQL/Redis 配置原样保留用于回退，但不会导入驱动、建立连接或改写；检测到 PostgreSQL 选择器时必须记录不含连接地址和凭据的警告。
 
 `ModuleHelper.load()` 同时支持包级预过滤和导入后的类过滤；ModuleManager 与 FileManager 必须使用前者在 `import_module()` 之前完成固定白名单判断。产品能力映射保留在组合根，通用 Helper 不读取数据库或 Lite taxonomy。运行中停用适配器时必须停止活动实例，但不通过删除 `sys.modules` 强制卸载共享代码；重启后按最新配置形成干净导入集合。
 

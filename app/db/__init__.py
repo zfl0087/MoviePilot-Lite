@@ -7,8 +7,12 @@ from sqlalchemy.engine import Engine as SQLAlchemyEngine, ExceptionContext
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Session, as_declarative, declared_attr, scoped_session, sessionmaker
 
+from app.core.capability import Capability, is_capability_enabled
 from app.core.config import settings
 from app.log import logger
+
+
+_postgresql_disabled_warning_emitted = False
 
 
 def _database_error_metadata(error: BaseException) -> Optional[dict[str, Any]]:
@@ -57,11 +61,26 @@ def _register_database_error_logging(engine: SQLAlchemyEngine) -> None:
     event.listen(engine, "handle_error", _log_database_error)
 
 
+def _postgresql_backend_enabled() -> bool:
+    """仅在固定能力配置允许 PostgreSQL 时接受历史数据库设置。"""
+    global _postgresql_disabled_warning_emitted
+
+    requested = settings.DB_TYPE.lower() == "postgresql"
+    enabled = is_capability_enabled(Capability.POSTGRESQL) and requested
+    if requested and not enabled and not _postgresql_disabled_warning_emitted:
+        logger.warning(
+            "检测到历史 PostgreSQL 配置；MoviePilot Lite 固定使用 SQLite，"
+            "原 PostgreSQL 配置不会被读取或改写"
+        )
+        _postgresql_disabled_warning_emitted = True
+    return enabled
+
+
 def get_id_column():
     """
     根据数据库类型返回合适的ID列定义
     """
-    if settings.DB_TYPE.lower() == "postgresql":
+    if _postgresql_backend_enabled():
         # PostgreSQL使用SERIAL类型，让数据库自动处理序列
         return Column(Integer, Identity(start=1, cycle=True), primary_key=True)
     else:
@@ -76,7 +95,7 @@ def _get_database_engine(is_async: bool = False):
     :return: 返回对应的数据库引擎
     """
     # 根据数据库类型选择连接方式
-    if settings.DB_TYPE.lower() == "postgresql":
+    if _postgresql_backend_enabled():
         return _get_postgresql_engine(is_async)
     else:
         return _get_sqlite_engine(is_async)

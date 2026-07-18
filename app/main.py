@@ -3,11 +3,9 @@ import os
 import setproctitle
 import signal
 import sys
-import threading
 from pathlib import Path
 
 import uvicorn as uvicorn
-from PIL import Image
 from uvicorn import Config
 
 from app.utils.stdio import configure_rotating_stdio
@@ -58,49 +56,8 @@ def request_shutdown() -> None:
 
 
 def start_tray():
-    """
-    启动托盘图标
-    """
-
-    if not SystemUtils.is_frozen():
-        return
-
-    if not SystemUtils.is_windows():
-        return
-
-    def open_web():
-        """
-        调用浏览器打开前端页面
-        """
-        import webbrowser
-        webbrowser.open(f"http://localhost:{settings.NGINX_PORT}")
-
-    def quit_app():
-        """
-        退出程序
-        """
-        request_shutdown()
-        TrayIcon.stop()
-
-    import pystray
-
-    # 托盘图标
-    TrayIcon = pystray.Icon(
-        settings.PROJECT_NAME,
-        icon=Image.open(settings.ROOT_PATH / 'app.ico'),
-        menu=pystray.Menu(
-            pystray.MenuItem(
-                '打开',
-                open_web,
-            ),
-            pystray.MenuItem(
-                '退出',
-                quit_app,
-            )
-        )
-    )
-    # 启动托盘图标
-    threading.Thread(target=TrayIcon.run, daemon=True).start()
+    """Lite 仅支持 Docker 运行，不初始化 Windows 原生托盘。"""
+    return None
 
 
 def signal_handler(signum, frame):

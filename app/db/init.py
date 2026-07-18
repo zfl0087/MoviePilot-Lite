@@ -4,7 +4,7 @@ from alembic.command import upgrade
 from alembic.config import Config
 
 from app.core.config import settings
-from app.db import Engine, Base
+from app.db import Engine, Base, _postgresql_backend_enabled
 from app.log import logger
 
 
@@ -30,7 +30,7 @@ def update_db():
         alembic_cfg.set_main_option('script_location', str(script_location))
         
         # 根据数据库类型设置不同的URL
-        if settings.DB_TYPE.lower() == "postgresql":
+        if _postgresql_backend_enabled():
             db_url = settings.DB_POSTGRESQL_URL()
         else:
             db_location = settings.CONFIG_PATH / 'user.db'

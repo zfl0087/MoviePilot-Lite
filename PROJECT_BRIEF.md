@@ -172,7 +172,7 @@ CI 使用模拟服务验证通用流程；真实 115 Token 不进入 GitHub Acti
 | MoviePilot 前端 | `v2` | `435e9ecfdd4febf791fd581b3be9233816cebf7f` |
 | MoviePilot 官方插件 | `main` | `4e11007980fd7703302adfa4474e494b64244b5c` |
 
-两个私有仓库已经创建，并且 Codex GitHub App 仅获准访问这两个仓库。后端 `lite` 分支已建立固定能力配置、API 路由和模块发现的导入前门控；当前已在运行时移除 `AUTH_SITE`、PT 在线认证、Agent、Workflow、Redis、订阅、搜索和下载器的启动链路。管理员登录、`API_TOKEN` 和资源 Token 固定使用本地等级 1，115 OAuth/API 保持独立。启动期只装配模块、事件、已安装插件、Lite Scheduler、Monitor、Lite Command 和条件 DoH；不会自动同步插件、安装插件依赖或上报使用统计。内建消息命令固定为 `/mediaserver_sync`、`/clear_cache`、`/restart`、`/version`，普通 115 分享链接继续广播给手动安装的 P115StrmHelper。Scheduler 只保留媒体服务器同步、公共维护、缓存清理、条件数据清理、条件主动 GC 和兼容插件任务。依赖、Docker 和前端裁剪仍待后续独立变更，尚未构建或发布 Lite 镜像。
+两个私有仓库已经创建，并且 Codex GitHub App 仅获准访问这两个仓库。后端 `lite` 分支已建立固定能力配置、API 路由和模块发现的导入前门控；当前已在运行时移除 `AUTH_SITE`、PT 在线认证、Agent、Workflow、Redis、订阅、搜索和下载器的启动链路。管理员登录、`API_TOKEN` 和资源 Token 固定使用本地等级 1，115 OAuth/API 保持独立。启动期只装配模块、事件、已安装插件、Lite Scheduler、Monitor、Lite Command 和条件 DoH；不会自动同步插件、安装插件依赖或上报使用统计。内建消息命令固定为 `/mediaserver_sync`、`/clear_cache`、`/restart`、`/version`，普通 115 分享链接继续广播给手动安装的 P115StrmHelper。Scheduler 只保留媒体服务器同步、公共维护、缓存清理、条件数据清理、条件主动 GC 和兼容插件任务。正式 Python 运行入口已移除 24 个 Agent/LLM、PT/下载器、浏览器、Redis/PostgreSQL 和 Windows 托盘专属根依赖；官方禁用源码测试所需包只保留在开发入口。干净运行环境已证明禁止包真实缺失时保留入口和正常生命周期可运行。Docker 系统包、容器更新器、FFmpeg、前端裁剪及真实 115 Canary 仍待后续独立变更，尚未构建或发布 Lite 镜像。
 
 ## 12. 项目协作规则
 

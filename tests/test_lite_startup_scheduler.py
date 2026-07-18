@@ -23,6 +23,29 @@ FORBIDDEN_IMPORT_PREFIXES = (
     "app.helper.sites",
     "app.helper.redis",
     "app.helper.display",
+    "langchain",
+    "langchain_core",
+    "langchain_community",
+    "langchain_anthropic",
+    "langchain_aws",
+    "langchain_openai",
+    "langchain_google_genai",
+    "langchain_deepseek",
+    "langgraph",
+    "boto3",
+    "anthropic",
+    "openai",
+    "google.genai",
+    "ddgs",
+    "qbittorrentapi",
+    "transmission_rpc",
+    "torrentool",
+    "cloakbrowser",
+    "pyvirtualdisplay",
+    "redis",
+    "psycopg2",
+    "asyncpg",
+    "pystray",
 )
 
 IMPORT_PROBE_TARGETS = (
@@ -33,6 +56,7 @@ IMPORT_PROBE_TARGETS = (
     "app.chain.transfer",
     "app.monitor",
     "app.startup.lifecycle",
+    "app.main",
 )
 
 RETAINED_SYSTEM_JOB_IDS = {"scheduler_job", "clear_cache"}

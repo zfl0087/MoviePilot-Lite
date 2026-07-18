@@ -29,7 +29,6 @@ from app.helper.interaction import (
     skills_interaction_manager,
     PendingMediaInteraction,
 )
-from app.helper.torrent import TorrentHelper
 from app.log import logger
 from app.schemas import CommingMessage, DownloadDirectory, FileURI, NotExistMediaInfo, Notification
 from app.schemas.message import ChannelCapabilityManager, ChannelCapability
@@ -2720,6 +2719,9 @@ class MediaInteractionChain(ChainBase):
         """
         根据已选媒体搜索资源，并切换到资源选择阶段。
         """
+        if not is_capability_enabled(Capability.TORRENT_SEARCH):
+            raise RuntimeError("MoviePilot Lite 不支持种子资源搜索")
+
         exist_flag, no_exists = _get_optional_chain("download")().get_no_exists_info(
             meta=request.meta,
             mediainfo=mediainfo,
@@ -2783,6 +2785,8 @@ class MediaInteractionChain(ChainBase):
                 )
             )
             return
+
+        from app.helper.torrent import TorrentHelper
 
         contexts = TorrentHelper().sort_torrents(contexts)
         if self._should_auto_download(userid):

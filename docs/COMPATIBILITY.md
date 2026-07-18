@@ -10,7 +10,7 @@
 
 ## 2. 当前状态
 
-当前项目仍未形成可验收的 Lite 运行版本。固定能力配置、API 与模块导入前门控、PT 用户认证、启动 owner、Scheduler、内建命令、消息插件事件、Monitor/Transfer 导入隔离已经有自动化测试证据；依赖、Docker、前端及真实 115 Canary 仍未完成。因此本文档同时记录已实现边界和后续目标，不代表完整兼容认证。
+当前项目仍未形成可发布验收的 Lite 版本。固定能力配置、API 与模块导入前门控、PT 用户认证、启动 owner、Scheduler、内建命令、消息插件事件、Monitor/Transfer 导入隔离和 Python 正式运行依赖裁剪已经有自动化及干净环境证据；Docker、前端及真实 115 Canary 仍未完成。因此本文档同时记录已实现边界和后续目标，不代表完整兼容认证。
 
 首个实现基线：
 
@@ -46,11 +46,11 @@
 | 已有插件配置和数据 | 保留数据 | 按插件兼容等级决定是否加载 |
 | PT、下载器和订阅配置 | 保留数据 | 不执行、不显示为可用能力 |
 | `AUTH_SITE` | 不支持 | 已从有效配置模型移除；旧环境输入被忽略，历史数据库/未知配置数据不主动删除 |
-| PostgreSQL | 不支持 | 不提供自动迁移，不得静默创建空 SQLite 替代 |
+| PostgreSQL | 保留配置、不支持运行 | Lite 固定使用 `/config/user.db`；不读取 PostgreSQL URL、不自动迁移或改写历史配置 |
 | Redis | 不支持 | 不连接、不迁移缓存数据 |
 | CookieCloud | 不支持 | 不保留接口或后台同步链路 |
 
-检测到 PostgreSQL 配置时，Lite 必须停止启动并明确提示迁移要求。禁止在用户不知情的情况下切换到新建 SQLite 数据库，以免表现为数据丢失。
+检测到历史 PostgreSQL 选择器时，Lite 会记录不含连接地址或凭据的明确警告，并继续使用 `/config/user.db`。Lite 不会从 PostgreSQL 自动复制数据；如果该 SQLite 文件没有原业务数据，界面可能表现为空。用户必须先在副本环境完成显式迁移和验证，不能把“能够启动”理解为 PostgreSQL 数据已经迁移。
 
 已移除配置默认只保留原始数据，不主动清理。将来回退官方版本时，应由对应官方版本继续解释这些配置。
 
@@ -116,7 +116,7 @@ Lite 不伪造、不提高官方认证级别，也不使用固定成功结果模
 
 不支持的 API 不注册路由，访问时预期得到标准未找到响应。禁止保留返回空数据或虚假成功的兼容空壳。
 
-能力配置版本 2 已在正常 FastAPI 初始化路径完成主 API、Radarr/Sonarr 和 CookieCloud 的导入前门控。启动路径不再执行 PT 用户认证、Agent、Workflow、Display、Redis、服务端统计预取、插件自动同步、缺失依赖安装或使用统计上报。Scheduler 固定保留 `scheduler_job`、`clear_cache`、条件 `mediaserver_sync`、条件 `data_cleanup`、条件 `full_gc` 和兼容插件任务；历史订阅、下载器、推荐、壁纸、市场刷新、Agent、Workflow 与统计配置不能恢复任务。内建命令固定为 `/mediaserver_sync`、`/clear_cache`、`/restart`、`/version`，插件命令仍可注册。模块诊断 API 只枚举实际发现的 Lite 模块；路径、Token 校验、响应字段与保留模块测试语义不变。依赖和前端页面仍须通过后续独立变更继续裁剪。
+能力配置版本 2 已在正常 FastAPI 初始化路径完成主 API、Radarr/Sonarr 和 CookieCloud 的导入前门控。启动路径不再执行 PT 用户认证、Agent、Workflow、Display、Redis、服务端统计预取、插件自动同步、缺失依赖安装或使用统计上报。Scheduler 固定保留 `scheduler_job`、`clear_cache`、条件 `mediaserver_sync`、条件 `data_cleanup`、条件 `full_gc` 和兼容插件任务；历史订阅、下载器、推荐、壁纸、市场刷新、Agent、Workflow 与统计配置不能恢复任务。内建命令固定为 `/mediaserver_sync`、`/clear_cache`、`/restart`、`/version`，插件命令仍可注册。模块诊断 API 只枚举实际发现的 Lite 模块；路径、Token 校验、响应字段与保留模块测试语义不变。Python 正式运行入口已经移除固定 24 个禁用能力根依赖；前端页面和 Docker 镜像仍须通过后续独立变更继续裁剪。
 
 插件动态 API 只有在插件本身通过兼容检查并成功加载后才可注册。
 

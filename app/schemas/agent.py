@@ -3,7 +3,6 @@
 from datetime import datetime
 from typing import Any, List, Literal, Optional, Union
 
-from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field, ConfigDict, field_serializer
 
 
@@ -12,7 +11,9 @@ class ConversationMemory(BaseModel):
 
     session_id: str = Field(description="会话ID")
     user_id: Optional[str] = Field(default=None, description="用户ID")
-    messages: List[BaseMessage] = Field(default_factory=list, description="消息列表")
+    # Lite 仍需导入公共 Schema 聚合模块，但 Agent 运行时固定禁用。
+    # 使用 Any 保留历史消息对象的透传能力，避免公共 Schema 导入 LangChain。
+    messages: List[Any] = Field(default_factory=list, description="消息列表")
     updated_at: datetime = Field(default_factory=datetime.now, description="更新时间")
 
     model_config = ConfigDict()
