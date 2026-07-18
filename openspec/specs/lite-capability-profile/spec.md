@@ -1,10 +1,10 @@
 # lite-capability-profile Specification
 
 ## Purpose
-TBD - created by archiving change add-lite-capability-profile. Update Purpose after archive.
+定义 MoviePilot Lite 固定、不可由运行配置改写的能力分类及其确定性机器可读清单，作为各运行与构建边界的统一真相源。
 ## Requirements
 ### Requirement: 稳定且完整的能力分类
-系统 MUST 定义稳定、唯一的 MoviePilot Lite 能力标识。启用能力 MUST 为 `system`、`admin-auth`、`cloud-storage`、`metadata`、`media-organization`、`plugins`、`messaging`、`notifications` 和 `media-server`；禁用能力 MUST 为 `pt-sites`、`pt-site-auth`、`torrent-search`、`downloaders`、`subscriptions`、`content-discovery`、`agent`、`llm`、`mcp`、`skills`、`voice-processing`、`workflow`、`cookiecloud`、`browser-automation`、`redis`、`postgresql`、`multi-user`、`sso`、`arr-compat` 和 `ffmpeg-transcoding`。每个已定义能力 MUST 恰好归入启用或禁用集合之一。
+系统 MUST 定义稳定、唯一的 MoviePilot Lite 能力标识。启用能力 MUST 为 `system`、`admin-auth`、`cloud-storage`、`metadata`、`media-organization`、`plugins`、`messaging`、`notifications` 和 `media-server`；禁用能力 MUST 为 `pt-sites`、`pt-site-auth`、`torrent-search`、`downloaders`、`subscriptions`、`content-discovery`、`agent`、`llm`、`mcp`、`skills`、`voice-processing`、`workflow`、`cookiecloud`、`browser-automation`、`redis`、`postgresql`、`multi-user`、`sso`、`auxiliary-auth`、`arr-compat` 和 `ffmpeg-transcoding`。每个已定义能力 MUST 恰好归入启用或禁用集合之一。
 
 #### Scenario: 能力被完整分类
 - **WHEN** 系统枚举 Lite 配置中的全部能力
@@ -15,11 +15,11 @@ TBD - created by archiving change add-lite-capability-profile. Update Purpose af
 - **THEN** 系统返回这些能力已启用
 
 #### Scenario: 移除能力查询
-- **WHEN** 调用方查询 `pt-site-auth`、`downloaders`、`agent` 或 `workflow`
+- **WHEN** 调用方查询 `pt-site-auth`、`auxiliary-auth`、`downloaders`、`agent` 或 `workflow`
 - **THEN** 系统返回这些能力未启用
 
 ### Requirement: 固定且不可变的 Lite 配置
-系统 MUST 使用固定名称 `lite` 和正整数配置版本标识该能力配置。启用与禁用集合 MUST 在进程生命周期内不可变，且环境变量、用户设置和 `/config` 内容 MUST NOT 改写能力状态。
+系统 MUST 使用固定名称 `lite` 和正整数配置版本标识该能力配置。能力分类、清单字段或对外契约发生变化时，配置版本 MUST 递增；本能力分类的配置版本 MUST 为 2。启用与禁用集合 MUST 在进程生命周期内不可变，且环境变量、用户设置和 `/config` 内容 MUST NOT 改写能力状态。
 
 #### Scenario: 运行配置不能恢复禁用能力
 - **WHEN** 环境变量、用户设置或历史 `/config` 中存在与 `agent` 或 `downloaders` 同名的启用值
@@ -28,6 +28,10 @@ TBD - created by archiving change add-lite-capability-profile. Update Purpose af
 #### Scenario: 调用方尝试修改能力集合
 - **WHEN** 调用方尝试向启用集合添加能力或从中删除能力
 - **THEN** 修改失败，后续查询结果保持不变
+
+#### Scenario: 能力分类变更递增版本
+- **WHEN** `auxiliary-auth` 被加入固定能力分类并出现在机器可读清单中
+- **THEN** 清单中的配置版本为 2，且高于变更前的版本 1
 
 ### Requirement: 未知能力安全失败
 系统 MUST 拒绝未定义的能力标识和错误类型，不得因拼写错误、未知上游能力或宽松字符串比较而将其视为已启用。
@@ -65,15 +69,3 @@ TBD - created by archiving change add-lite-capability-profile. Update Purpose af
 #### Scenario: 非目标依赖缺失
 - **WHEN** PT、下载器、Agent、Redis、PostgreSQL 或浏览器自动化专属依赖不存在
 - **THEN** 能力配置模块仍可正常导入并返回固定 Lite 配置
-
-### Requirement: 本变更不改变现有运行行为
-仅增加能力配置定义时，系统 MUST NOT 自动将该定义接入路由、模块、服务、任务、命令、插件或前端。实际裁剪 MUST 由后续经过独立审批和验证的变更完成。
-
-#### Scenario: 引入配置后的应用行为
-- **WHEN** 当前应用在尚未实施后续能力门控变更的情况下启动
-- **THEN** 已有路由注册、模块扫描和生命周期行为保持不变
-
-#### Scenario: 禁用能力尚未接入门控
-- **WHEN** 能力清单将某项能力标记为禁用但对应后续门控尚未实施
-- **THEN** 系统不会声称该能力已经完成运行时或构建期裁剪
-

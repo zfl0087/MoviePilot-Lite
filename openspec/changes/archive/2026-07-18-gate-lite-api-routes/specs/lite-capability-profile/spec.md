@@ -29,3 +29,10 @@
 #### Scenario: 能力分类变更递增版本
 - **WHEN** `auxiliary-auth` 被加入固定能力分类并出现在机器可读清单中
 - **THEN** 清单中的配置版本为 2，且高于变更前的版本 1
+
+## REMOVED Requirements
+
+### Requirement: 本变更不改变现有运行行为
+**Reason**: 该要求仅用于能力配置首次落地时约束变更范围；API 路由门控现已按独立变更获批、实现并验证，继续保留会与正式 `lite-api-route-gating` 规范冲突。
+
+**Migration**: API 导入与注册行为由 `lite-api-route-gating` 正式规范约束；模块、服务、任务、命令、插件和前端仍须分别通过后续独立变更接入能力门控。
