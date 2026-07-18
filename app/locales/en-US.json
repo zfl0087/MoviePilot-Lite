@@ -1369,6 +1369,14 @@
     {
       "source": "{seconds}秒",
       "target": "{seconds}s"
+    },
+    {
+      "source": "不支持 {name} 的配置保存",
+      "target": "Storage type {name} does not support configuration saving"
+    },
+    {
+      "source": "不支持 {name} 的配置重置",
+      "target": "Storage type {name} does not support configuration reset"
     }
   ]
 }

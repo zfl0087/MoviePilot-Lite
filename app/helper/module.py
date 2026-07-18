@@ -8,6 +8,7 @@ from typing import List, Any, Callable
 from app.log import logger
 
 FilterFuncType = Callable[[str, Any], bool]
+PackageFilterFuncType = Callable[[str], bool]
 
 
 def _default_filter(name: str, obj: Any) -> bool:
@@ -17,17 +18,30 @@ def _default_filter(name: str, obj: Any) -> bool:
     return True if name and obj else False
 
 
+def _default_package_filter(package_name: str) -> bool:
+    """
+    默认包过滤器
+    """
+    return bool(package_name)
+
+
 class ModuleHelper:
     """
     模块动态加载
     """
 
     @classmethod
-    def load(cls, package_path: str, filter_func: FilterFuncType = _default_filter) -> List[Any]:
+    def load(
+        cls,
+        package_path: str,
+        filter_func: FilterFuncType = _default_filter,
+        package_filter: PackageFilterFuncType = _default_package_filter,
+    ) -> List[Any]:
         """
         导入模块
         :param package_path: 父包名
-        :param filter_func: 子模块过滤函数，入参为模块名和模块对象，返回True则导入，否则不导入
+        :param filter_func: 类过滤函数，在候选包导入后筛选模块类
+        :param package_filter: 包过滤函数，在候选包导入前按子包名判断是否允许导入
         :return: 导入的模块对象列表
         """
 
@@ -35,9 +49,18 @@ class ModuleHelper:
         loaded_modules = set()
         packages = importlib.import_module(package_path)
         for importer, package_name, _ in pkgutil.iter_modules(packages.__path__):
+            del importer
+            if package_name.startswith('_'):
+                continue
             try:
-                if package_name.startswith('_'):
+                if not package_filter(package_name):
                     continue
+            except Exception as err:
+                logger.debug(
+                    f'过滤模块包 {package_name} 失败，已拒绝导入：{str(err)} - {traceback.format_exc()}'
+                )
+                continue
+            try:
                 full_package_name = f'{package_path}.{package_name}'
                 module = importlib.import_module(full_package_name)
                 importlib.reload(module)

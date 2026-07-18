@@ -65,3 +65,8 @@ class WeakSingleton(abc.ABCMeta, type):
             if cls not in cls._instances:
                 cls._instances[cls] = super().__call__(*args, **kwargs)
             return cls._instances[cls]
+
+    def discard_instance(cls):
+        """移除当前类的弱单例实例，并返回被移除的对象。"""
+        with cls._lock:
+            return cls._instances.pop(cls, None)

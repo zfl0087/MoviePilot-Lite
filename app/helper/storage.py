@@ -1,8 +1,10 @@
 from typing import List, Optional
 
 from app import schemas
+from app.core.event import eventmanager
 from app.db.systemconfig_oper import SystemConfigOper
-from app.schemas.types import SystemConfigKey
+from app.schemas import ConfigChangeEventData
+from app.schemas.types import EventType, SystemConfigKey
 
 
 class StorageHelper:
@@ -43,11 +45,19 @@ class StorageHelper:
                 )
             ]
         else:
+            matched = False
             for s in storagies:
                 if s.type == storage:
                     s.config = conf
+                    matched = True
                     break
-        SystemConfigOper().set(SystemConfigKey.Storages, [s.model_dump() for s in storagies])
+            if not matched:
+                storagies.append(
+                    schemas.StorageConf(type=storage, config=conf)
+                )
+        value = [s.model_dump() for s in storagies]
+        if SystemConfigOper().set(SystemConfigKey.Storages, value):
+            self.__publish_storage_change(value)
 
     def add_storage(self, storage: str, name: str, conf: dict):
         """
@@ -68,7 +78,9 @@ class StorageHelper:
                 name=name,
                 config=conf
             ))
-        SystemConfigOper().set(SystemConfigKey.Storages, [s.model_dump() for s in storagies])
+        value = [s.model_dump() for s in storagies]
+        if SystemConfigOper().set(SystemConfigKey.Storages, value):
+            self.__publish_storage_change(value)
 
     def reset_storage(self, storage: str):
         """
@@ -79,4 +91,20 @@ class StorageHelper:
             if s.type == storage:
                 s.config = {}
                 break
-        SystemConfigOper().set(SystemConfigKey.Storages, [s.model_dump() for s in storagies])
+        value = [s.model_dump() for s in storagies]
+        if SystemConfigOper().set(SystemConfigKey.Storages, value):
+            self.__publish_storage_change(value)
+
+    @staticmethod
+    def __publish_storage_change(value: list) -> None:
+        """
+        发布存储集合变化，让模块管理器统一重建活动适配器。
+        """
+        eventmanager.send_event(
+            etype=EventType.ConfigChanged,
+            data=ConfigChangeEventData(
+                key=SystemConfigKey.Storages.value,
+                value=value,
+                change_type="update",
+            ),
+        )

@@ -13,17 +13,17 @@ class StorageChain(ChainBase):
     存储处理链
     """
 
-    def save_config(self, storage: str, conf: dict) -> None:
+    def save_config(self, storage: str, conf: dict) -> Optional[bool]:
         """
         保存存储配置
         """
-        self.run_module("save_config", storage=storage, conf=conf)
+        return self.run_module("save_config", storage=storage, conf=conf)
 
-    def reset_config(self, storage: str) -> None:
+    def reset_config(self, storage: str) -> Optional[bool]:
         """
         重置存储配置
         """
-        self.run_module("reset_config", storage=storage)
+        return self.run_module("reset_config", storage=storage)
 
     def generate_qrcode(self, storage: str) -> Optional[Tuple[dict, str]]:
         """

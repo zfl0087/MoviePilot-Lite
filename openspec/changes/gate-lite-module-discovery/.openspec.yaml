@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-07-18
+goal: 正常启动只导入 Lite 保留且实际启用的模块与适配器，禁用和未知模块默认不进入运行时。

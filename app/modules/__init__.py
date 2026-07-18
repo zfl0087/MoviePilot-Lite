@@ -200,8 +200,6 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
     """
     消息基类
     """
-    CONFIG_WATCH = {SystemConfigKey.Notifications.value}
-
     def __init__(self):
         """
         初始化消息基类，并设置消息通道
@@ -379,8 +377,6 @@ class _MediaServerBase(ServiceBase[TService, MediaServerConf]):
     """
     媒体服务器基类
     """
-    CONFIG_WATCH = {SystemConfigKey.MediaServers.value}
-
     def get_configs(self) -> Dict[str, MediaServerConf]:
         """
         获取已启用的媒体服务器的配置字典

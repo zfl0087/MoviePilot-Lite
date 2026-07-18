@@ -74,8 +74,9 @@ def save(name: str, conf: dict, _: User = Depends(get_current_active_superuser))
     """
     保存存储配置
     """
-    StorageChain().save_config(name, conf)
-    return schemas.Response(success=True)
+    if StorageChain().save_config(name, conf):
+        return schemas.Response(success=True)
+    return schemas.Response(success=False, message=f"不支持 {name} 的配置保存")
 
 
 @router.get("/reset/{name}", summary="重置存储配置", response_model=schemas.Response)
@@ -83,8 +84,9 @@ def reset(name: str, _: User = Depends(get_current_active_superuser)) -> Any:
     """
     重置存储配置
     """
-    StorageChain().reset_config(name)
-    return schemas.Response(success=True)
+    if StorageChain().reset_config(name):
+        return schemas.Response(success=True)
+    return schemas.Response(success=False, message=f"不支持 {name} 的配置重置")
 
 
 @router.post("/list", summary="所有目录和文件", response_model=List[schemas.FileItem])

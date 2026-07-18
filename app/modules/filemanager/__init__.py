@@ -9,12 +9,13 @@ from app.core.metainfo import MetaInfo
 from app.helper.directory import DirectoryHelper
 from app.helper.message import MessageHelper
 from app.helper.module import ModuleHelper
+from app.helper.storage import StorageHelper
 from app.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas import TransferInfo, ExistMediaInfo, TmdbEpisode, TransferDirectoryConf, FileItem, StorageUsage
-from app.schemas.types import MediaType, ModuleType, OtherModulesType
+from app.schemas.types import MediaType, ModuleType, OtherModulesType, StorageSchema
 from app.utils.system import SystemUtils
 
 
@@ -26,15 +27,40 @@ class FileManagerModule(_ModuleBase):
     _storage_schemas = []
     _support_storages = []
 
+    STORAGE_PACKAGE_BY_TYPE = {
+        StorageSchema.Local.value: "local",
+        StorageSchema.Alipan.value: "alipan",
+        StorageSchema.U115.value: "u115",
+        StorageSchema.Rclone.value: "rclone",
+        StorageSchema.Alist.value: "alist",
+        StorageSchema.SMB.value: "smb",
+    }
+
     def __init__(self):
         super().__init__()
         self.directoryhelper = DirectoryHelper()
         self.messagehelper = MessageHelper()
+        self._storage_instances: Dict[str, StorageBase] = {}
 
     def init_module(self) -> None:
-        # 加载模块
-        self._storage_schemas = ModuleHelper.load('app.modules.filemanager.storages',
-                                                  filter_func=lambda _, obj: hasattr(obj, 'schema') and obj.schema)
+        self._storage_instances = {}
+        configured_storages = {
+            storage.type
+            for storage in StorageHelper.get_storagies()
+            if storage.type in self.STORAGE_PACKAGE_BY_TYPE
+        }
+        enabled_packages = {
+            self.STORAGE_PACKAGE_BY_TYPE[StorageSchema.Local.value]
+        }
+        enabled_packages.update(
+            self.STORAGE_PACKAGE_BY_TYPE[storage]
+            for storage in configured_storages
+        )
+        self._storage_schemas = ModuleHelper.load(
+            'app.modules.filemanager.storages',
+            filter_func=lambda _, obj: hasattr(obj, 'schema') and obj.schema,
+            package_filter=lambda package_name: package_name in enabled_packages,
+        )
         # 获取存储类型
         self._support_storages = [storage.schema.value for storage in self._storage_schemas if storage.schema]
 
@@ -63,8 +89,24 @@ class FileManagerModule(_ModuleBase):
         """
         return 4
 
-    def stop(self):
-        pass
+    def stop(self) -> None:
+        """
+        停止已创建的存储实例并释放其弱单例引用。
+        """
+        for storage, instance in list(self._storage_instances.items()):
+            try:
+                instance.stop()
+            except Exception as err:
+                logger.error(f"停止 {storage} 存储实例失败：{str(err)}")
+            finally:
+                discard_instance = getattr(
+                    instance.__class__, "discard_instance", None
+                )
+                if callable(discard_instance):
+                    discard_instance()
+        self._storage_instances = {}
+        self._storage_schemas = []
+        self._support_storages = []
 
     def test(self) -> Tuple[bool, str]:
         """
@@ -104,15 +146,64 @@ class FileManagerModule(_ModuleBase):
 
         return True, ""
 
-    def __get_storage_oper(self, _storage: str, _func: Optional[str] = None) -> Optional[StorageBase]:
+    @staticmethod
+    def __is_storage_configured(storage: str) -> bool:
+        """
+        判断存储是否属于当前持久化配置；Local 始终作为基础存储可用。
+        """
+        if storage == StorageSchema.Local.value:
+            return True
+        return any(conf.type == storage for conf in StorageHelper.get_storagies())
+
+    def __load_storage_schema(self, storage: str) -> None:
+        """
+        只按固定映射加载一个存储实现，不扫描导入其他适配器。
+        """
+        package_name = self.STORAGE_PACKAGE_BY_TYPE.get(storage)
+        if not package_name:
+            return
+        storage_schemas = ModuleHelper.load(
+            'app.modules.filemanager.storages',
+            filter_func=lambda _, obj: hasattr(obj, 'schema') and obj.schema,
+            package_filter=lambda candidate: candidate == package_name,
+        )
+        loaded_types = {
+            schema.schema.value for schema in self._storage_schemas if schema.schema
+        }
+        for storage_schema in storage_schemas:
+            if storage_schema.schema.value not in loaded_types:
+                self._storage_schemas.append(storage_schema)
+                loaded_types.add(storage_schema.schema.value)
+        self._support_storages = [
+            schema.schema.value for schema in self._storage_schemas if schema.schema
+        ]
+
+    def __get_storage_oper(
+        self,
+        _storage: str,
+        _func: Optional[str] = None,
+        allow_setup: bool = False,
+    ) -> Optional[StorageBase]:
         """
         获取存储操作对象
         """
+        if _storage not in self.STORAGE_PACKAGE_BY_TYPE:
+            return None
+        configured = self.__is_storage_configured(_storage)
+        if not configured and not allow_setup:
+            return None
+        if not any(
+            schema.schema and schema.schema.value == _storage
+            for schema in self._storage_schemas
+        ):
+            self.__load_storage_schema(_storage)
         for storage_schema in self._storage_schemas:
             if storage_schema.schema \
                     and storage_schema.schema.value == _storage \
                     and (not _func or hasattr(storage_schema, _func)):
-                return storage_schema()
+                if _storage not in self._storage_instances:
+                    self._storage_instances[_storage] = storage_schema()
+                return self._storage_instances[_storage]
         return None
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
@@ -122,8 +213,6 @@ class FileManagerModule(_ModuleBase):
         """
         支持的整理方式
         """
-        if storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(storage)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的整理方式获取")
@@ -167,31 +256,35 @@ class FileManagerModule(_ModuleBase):
         )
         return path.as_posix() if path else ""
 
-    def save_config(self, storage: str, conf: Dict) -> None:
+    def save_config(self, storage: str, conf: Dict) -> bool:
         """
         保存存储配置
         """
-        storage_oper = self.__get_storage_oper(storage)
+        storage_oper = self.__get_storage_oper(storage, allow_setup=True)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的配置保存")
-            return
+            return False
         storage_oper.set_config(conf)
+        return True
 
-    def reset_config(self, storage: str) -> None:
+    def reset_config(self, storage: str) -> bool:
         """
         重置存储配置
         """
         storage_oper = self.__get_storage_oper(storage)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的重置存储配置")
-            return
+            return False
         storage_oper.reset_config()
+        return True
 
     def generate_qrcode(self, storage: str) -> Optional[Tuple[dict, str]]:
         """
         生成二维码
         """
-        storage_oper = self.__get_storage_oper(storage, "generate_qrcode")
+        storage_oper = self.__get_storage_oper(
+            storage, "generate_qrcode", allow_setup=True
+        )
         if not storage_oper:
             logger.error(f"不支持 {storage} 的二维码生成")
             return None
@@ -201,7 +294,9 @@ class FileManagerModule(_ModuleBase):
         """
         生成 OAuth2 授权 URL
         """
-        storage_oper = self.__get_storage_oper(storage, "generate_auth_url")
+        storage_oper = self.__get_storage_oper(
+            storage, "generate_auth_url", allow_setup=True
+        )
         if not storage_oper:
             logger.error(f"不支持 {storage} 的 OAuth2 授权")
             return {}, f"不支持 {storage} 的 OAuth2 授权"
@@ -211,7 +306,9 @@ class FileManagerModule(_ModuleBase):
         """
         登录确认
         """
-        storage_oper = self.__get_storage_oper(storage, "check_login")
+        storage_oper = self.__get_storage_oper(
+            storage, "check_login", allow_setup=True
+        )
         if not storage_oper:
             logger.error(f"不支持 {storage} 的登录确认")
             return None
@@ -224,8 +321,6 @@ class FileManagerModule(_ModuleBase):
         :param recursion: 是否递归，此时只浏览文件
         :return: 文件项列表
         """
-        if fileitem.storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件浏览")
@@ -256,8 +351,6 @@ class FileManagerModule(_ModuleBase):
         """
         查询当前目录下是否存在指定扩展名任意文件
         """
-        if fileitem.storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件浏览")
@@ -291,8 +384,6 @@ class FileManagerModule(_ModuleBase):
         :param name: 目录名
         :return: 创建的目录
         """
-        if fileitem.storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的目录创建")
@@ -303,8 +394,6 @@ class FileManagerModule(_ModuleBase):
         """
         获取目录，如目录不存在则创建
         """
-        if storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(storage)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的目录获取")
@@ -315,8 +404,6 @@ class FileManagerModule(_ModuleBase):
         """
         删除文件或目录
         """
-        if fileitem.storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的删除处理")
@@ -327,8 +414,6 @@ class FileManagerModule(_ModuleBase):
         """
         重命名文件或目录
         """
-        if fileitem.storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的重命名处理")
@@ -339,8 +424,6 @@ class FileManagerModule(_ModuleBase):
         """
         下载文件
         """
-        if fileitem.storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的下载处理")
@@ -351,8 +434,6 @@ class FileManagerModule(_ModuleBase):
         """
         上传文件
         """
-        if fileitem.storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的上传处理")
@@ -363,8 +444,6 @@ class FileManagerModule(_ModuleBase):
         """
         根据路径获取文件项
         """
-        if storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(storage)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的文件获取")
@@ -375,8 +454,6 @@ class FileManagerModule(_ModuleBase):
         """
         获取上级目录项
         """
-        if fileitem.storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(fileitem.storage)
         if not storage_oper:
             logger.error(f"不支持 {fileitem.storage} 的文件获取")
@@ -392,8 +469,6 @@ class FileManagerModule(_ModuleBase):
         :param last_snapshot_time: 上次快照时间，用于增量快照
         :param max_depth: 最大递归深度，避免过深遍历
         """
-        if storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(storage)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的快照处理")
@@ -404,8 +479,6 @@ class FileManagerModule(_ModuleBase):
         """
         存储使用情况
         """
-        if storage not in self._support_storages:
-            return None
         storage_oper = self.__get_storage_oper(storage)
         if not storage_oper:
             logger.error(f"不支持 {storage} 的存储使用情况")

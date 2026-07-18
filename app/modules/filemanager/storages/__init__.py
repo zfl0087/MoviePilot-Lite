@@ -47,6 +47,12 @@ class StorageBase(metaclass=ABCMeta):
     def __init__(self):
         self.storagehelper = StorageHelper()
 
+    def stop(self) -> None:
+        """
+        停止存储实例持有的活动资源；无长期资源的适配器保持空实现。
+        """
+        return None
+
     @abstractmethod
     def init_storage(self):
         """

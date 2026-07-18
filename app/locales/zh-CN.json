@@ -193,6 +193,14 @@
     {
       "source": "测试MCP服务器失败: {reason}",
       "target": "测试MCP服务器失败: {reason}"
+    },
+    {
+      "source": "不支持 {name} 的配置保存",
+      "target": "不支持 {name} 的配置保存"
+    },
+    {
+      "source": "不支持 {name} 的配置重置",
+      "target": "不支持 {name} 的配置重置"
     }
   ]
 }

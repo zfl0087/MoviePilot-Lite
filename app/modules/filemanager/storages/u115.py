@@ -90,6 +90,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             }
         )
 
+    def stop(self) -> None:
+        """
+        关闭 115 HTTP 会话并清理未完成授权状态。
+        """
+        self._auth_state = {}
+        self.session.close()
+
     def _check_session(self):
         """
         检查会话是否过期
