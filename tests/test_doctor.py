@@ -86,3 +86,40 @@ def test_doctor_accepts_healthy_unmanaged_backend_port(monkeypatch):
     assert finding.severity == DoctorSeverity.Info
     assert finding.context["backend_version"] == "v2-test"
     assert runner.report.find("port.backend_occupied") is None
+
+
+def test_doctor_core_dependencies_do_not_require_browser_runtime(monkeypatch) -> None:
+    """正式 Lite Doctor 不得把浏览器模拟包认定为核心依赖。"""
+    inspected = []
+
+    def find_spec(name):
+        inspected.append(name)
+        return object()
+
+    monkeypatch.setattr(checks.importlib.util, "find_spec", find_spec)
+    runner = DoctorRunner()
+
+    checks._check_dependencies(runner)
+
+    assert "cloakbrowser" not in checks.CORE_DEPENDENCIES
+    assert "playwright" not in checks.CORE_DEPENDENCIES
+    assert "cloakbrowser" not in inspected
+    assert runner.report.find("dependencies.core").status == DoctorFindingStatus.Ok
+
+
+def test_doctor_still_reports_missing_real_core_dependency(monkeypatch) -> None:
+    """移除浏览器检查后，真实核心包缺失仍必须报告错误。"""
+    missing = checks.CORE_DEPENDENCIES[0]
+    monkeypatch.setattr(
+        checks.importlib.util,
+        "find_spec",
+        lambda name: None if name == missing else object(),
+    )
+    runner = DoctorRunner()
+
+    checks._check_dependencies(runner)
+
+    finding = runner.report.find("dependencies.core_missing")
+    assert finding is not None
+    assert finding.status == DoctorFindingStatus.Failed
+    assert missing in finding.detail

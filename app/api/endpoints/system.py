@@ -1347,20 +1347,14 @@ def restart_system(_: User = Depends(get_current_active_superuser)):
     return schemas.Response(success=ret, message=msg)
 
 
-@router.post("/upgrade", summary="升级并重启系统", response_model=schemas.Response)
+@router.post("/upgrade", summary="请求系统升级", response_model=schemas.Response)
 def upgrade_system(
     mode: Annotated[str | None, Body()] = None,
     _: User = Depends(get_current_active_superuser),
 ):
     """
-    触发系统升级并重启（仅管理员）
-
-    - 当前已开启自动升级时：直接重启，由启动流程完成升级。
-    - 当前未开启自动升级时：写入一次性升级标记，本次重启后仅执行一次升级。
+    按 Lite 固定镜像策略拒绝原地升级（仅管理员）。
     """
-    if not SystemHelper.can_restart():
-        return schemas.Response(success=False, message="当前运行环境不支持升级操作！")
-
     ret, msg = SystemHelper.upgrade(mode=mode or "release")
     return schemas.Response(success=ret, message=msg)
 

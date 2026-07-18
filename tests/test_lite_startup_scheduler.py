@@ -348,6 +348,49 @@ def test_lite_plugin_startup_uses_local_plugins_without_market_sync(monkeypatch)
     register_api.assert_called_once_with()
 
 
+def test_lite_empty_builtin_plugin_directory_loads_no_plugins(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """空内建插件目录必须正常返回空集合，不访问市场或安装依赖。"""
+    from app.core import plugin as plugin_module
+
+    plugins_dir = tmp_path / "app" / "plugins"
+    plugins_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        plugin_module,
+        "settings",
+        SimpleNamespace(ROOT_PATH=tmp_path),
+    )
+
+    loaded = plugin_module.PluginManager._load_selective_plugins(
+        pid=None,
+        installed_plugins=[],
+        check_module_func=lambda _module: True,
+    )
+
+    assert loaded == []
+
+
+def test_lite_plugin_dependency_failure_does_not_stop_core(monkeypatch) -> None:
+    """手动插件依赖安装失败必须局限于插件并返回待处理清单。"""
+    from app.core import plugin as plugin_module
+
+    plugin_helper = MagicMock()
+    plugin_helper.find_missing_dependencies.return_value = ["demo-wheel>=1"]
+    plugin_helper.install_dependencies.return_value = (False, "mock install failure")
+    monkeypatch.setattr(
+        plugin_module,
+        "PluginHelper",
+        MagicMock(return_value=plugin_helper),
+    )
+
+    result = plugin_module.PluginManager.install_plugin_missing_dependencies()
+
+    assert result == ["demo-wheel>=1"]
+    plugin_helper.install_dependencies.assert_called_once_with(["demo-wheel>=1"])
+
+
 def test_lite_startup_completion_does_not_auto_sync_plugins_or_report(monkeypatch) -> None:
     """启动完成任务不得自动下载插件、安装依赖或发送使用统计"""
     from app.chain import system as system_module
@@ -382,15 +425,42 @@ def test_lite_startup_completion_does_not_auto_sync_plugins_or_report(monkeypatc
     system_chain.restart_finish.assert_called_once_with()
 
 
-def test_lite_115_share_link_reaches_plugin_user_message_event() -> None:
-    """115 分享链接必须作为普通消息广播，供已手动安装的插件自动转存。"""
+def test_lite_115_share_link_reaches_fake_plugin_and_returns_result() -> None:
+    """115 分享链接必须原样交给手动插件并沿原渠道上下文回传结果。"""
     from app.chain.message import MessageChain
     from app.schemas.types import EventType, MessageChannel
 
     chain = object.__new__(MessageChain)
-    chain.eventmanager = MagicMock()
+    event_manager = MagicMock()
+    chain.eventmanager = event_manager
+    chain.pluginmanager = MagicMock()
     chain._handle_plugin_input_interaction = MagicMock(return_value=False)
     share_text = "https://115.com/s/demo?password=1234"
+    replies = []
+
+    class FakeP115StrmHelper:
+        """模拟已手动安装的 115 分享转存插件消费者。"""
+
+        @staticmethod
+        def consume(event_data: dict) -> None:
+            """记录事件并模拟插件使用原消息上下文返回转存结果。"""
+            replies.append(
+                {
+                    "title": "115 分享链接转存成功",
+                    "userid": event_data["userid"],
+                    "channel": event_data["channel"],
+                    "source": event_data["source"],
+                    "chat_id": event_data["chat_id"],
+                    "reply_to_message_id": event_data["reply_to_message_id"],
+                }
+            )
+
+    def dispatch(event_type, event_data) -> None:
+        """只把普通用户消息派发给假的目标插件。"""
+        assert event_type == EventType.UserMessage
+        FakeP115StrmHelper.consume(event_data)
+
+    event_manager.send_event.side_effect = dispatch
 
     deferred = chain._handle_message_core(
         channel=MessageChannel.Telegram,
@@ -403,7 +473,7 @@ def test_lite_115_share_link_reaches_plugin_user_message_event() -> None:
     )
 
     assert deferred is False
-    chain.eventmanager.send_event.assert_called_once_with(
+    event_manager.send_event.assert_called_once_with(
         EventType.UserMessage,
         {
             "text": share_text,
@@ -414,3 +484,15 @@ def test_lite_115_share_link_reaches_plugin_user_message_event() -> None:
             "reply_to_message_id": "message-1",
         },
     )
+    assert replies == [
+        {
+            "title": "115 分享链接转存成功",
+            "userid": "10001",
+            "channel": MessageChannel.Telegram,
+            "source": "telegram-test",
+            "chat_id": "chat-1",
+            "reply_to_message_id": "message-1",
+        }
+    ]
+    chain.pluginmanager.sync.assert_not_called()
+    chain.pluginmanager.install_plugin_missing_dependencies.assert_not_called()

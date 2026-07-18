@@ -34,7 +34,7 @@ Lite 使用唯一、不可由普通运行配置改写的能力配置。能力定
 
 API 路由门控已经消费该配置：主 API 和独立兼容接口必须先检查能力，再导入对应端点模块。PT 用户认证运行链路也已完成首批裁剪：`AUTH_SITE` 不再生效，管理员认证上下文固定为本地等级 1，插件等级 2、3、99 不再通过在线认证或私钥提升，启动阶段不再初始化站点认证/索引资源，Scheduler 不再注册 CookieCloud 同步、用户认证检查和站点数据刷新任务，也不清理历史站点用户数据。
 
-模块发现已经完成两层导入前门控。顶层无条件保留 Bangumi、豆瓣、Fanart、FileManager、TMDB、TVDB；官方消息渠道和 Emby/Jellyfin/Plex 只按启用配置加载；PT、下载器、Redis、PostgreSQL、非目标媒体服务器及未知上游包默认拒绝。FileManager 始终保留 Local，U115、Alipan、Alist、Rclone、SMB 只在已配置或经过既有认证入口明确首次设置时精确加载。Notifications、MediaServers、Storages 集合变化由 ModuleManager 统一重建，避免服务模块重复初始化。生命周期、Scheduler、Command、MessageChain、Monitor 与 TransferChain 也已完成固定集合和导入隔离；Python 正式运行依赖已按同一能力边界收敛，Docker 系统包、镜像文件和前端门控仍由后续 OpenSpec 分阶段实施，不得因当前裁剪而宣称完整 Lite 已经完成。
+模块发现已经完成两层导入前门控。顶层无条件保留 Bangumi、豆瓣、Fanart、FileManager、TMDB、TVDB；官方消息渠道和 Emby/Jellyfin/Plex 只按启用配置加载；PT、下载器、Redis、PostgreSQL、非目标媒体服务器及未知上游包默认拒绝。FileManager 始终保留 Local，U115、Alipan、Alist、Rclone、SMB 只在已配置或经过既有认证入口明确首次设置时精确加载。Notifications、MediaServers、Storages 集合变化由 ModuleManager 统一重建，避免服务模块重复初始化。生命周期、Scheduler、Command、MessageChain、Monitor 与 TransferChain 也已完成固定集合和导入隔离；Python 正式运行依赖和 Docker 静态产物合同已按同一能力边界收敛。双架构候选、资源指标和前端门控仍由后续阶段实施，不得因当前静态裁剪而宣称完整 Lite 已经完成。
 
 ## 4. 能力门控
 
@@ -171,8 +171,12 @@ Lite 数据库和缓存工厂在读取第三方后端前应用固定 capability�
 
 - Docker 支持 `linux/amd64` 和 `linux/arm64`。
 - Lite 构建不得安装 PT、下载器、Agent、浏览器内核、PostgreSQL、Redis、工作流和 `ffmpeg` 的专属依赖。
-- 保留 `ffprobe`，用于视频信息读取和识别整理。
+- 最终直接系统包使用正向允许集合，保留 Nginx、模板渲染、进程检查、UID/GID 降权、TLS/健康检查、cron/时区、Unar 和 jemalloc；构建工具不得进入最终阶段。
+- 保留 `ffprobe`、固定版本 Rclone 和 `uv`/pip 兼容入口；不保留 `ffmpeg`、浏览器内核、PT 资源或预装插件。
+- `/app/app/plugins` 以空的可写目录进入基础镜像，P115StrmHelper 及其他兼容插件只能由管理员手动安装。
 - Git 仓库可保留必要的官方源码结构以降低合并成本，但 Lite 运行镜像必须排除未启用能力的文件和资源。
+- 运行镜像不包含官方原地更新器；`MOVIEPILOT_AUTO_UPDATE`、历史一次性标记、升级 API 和 CLI `start/restart` 都不能覆盖当前镜像。升级只能通过上游同步、测试、固定候选镜像和人工推进完成。
+- 保持 `LANG=C.UTF-8`，中文、空格和常见标点路径必须通过文件枚举、Schema、整理和 `ffprobe` 参数往返测试。
 - 未启用网盘监控时不得产生周期性网盘扫描。
 - 不得运行站点、订阅、下载器、Agent 或工作流轮询。
 

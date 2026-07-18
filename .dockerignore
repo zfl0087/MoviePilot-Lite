@@ -6,10 +6,18 @@
 # Documentation
 docs/
 README.md
+README_EN.md
 LICENSE
+AGENTS.md
+CLAUDE.md
+PROJECT_BRIEF.md
+openspec/
 
 # Development files
 .pylintrc
+pytest.ini
+safety.policy.yml
+requirements-dev.in
 *.pyc
 __pycache__/
 *.pyo
@@ -68,6 +76,40 @@ temp/
 tests/
 test_*
 *_test.py
+app/testing/
+
+# Lite disabled runtime source
+app/agent/
+app/workflow/
+skills/
+app/api/endpoints/agent.py
+app/api/endpoints/anthropic.py
+app/api/endpoints/auth.py
+app/api/endpoints/discover.py
+app/api/endpoints/download.py
+app/api/endpoints/llm.py
+app/api/endpoints/mcp.py
+app/api/endpoints/mfa.py
+app/api/endpoints/openai.py
+app/api/endpoints/recommend.py
+app/api/endpoints/search.py
+app/api/endpoints/site.py
+app/api/endpoints/subscribe.py
+app/api/endpoints/torrent.py
+app/api/endpoints/workflow.py
+app/api/openai_utils.py
+app/api/servarr.py
+app/api/servcookie.py
+app/modules/indexer/
+app/modules/postgresql/
+app/modules/qbittorrent/
+app/modules/redis/
+app/modules/rtorrent/
+app/modules/transmission/
+
+# Local bootstrap and in-place update entrypoints
+moviepilot
+scripts/local_setup.py
 
 # Build artifacts
 build/

@@ -105,17 +105,13 @@ function load_config_from_app_env() {
     # 定义 ["变量名"]="预设默认值"
     # 禁止填入 CONFIG_DIR 变量，ACME_ENV_ 开头的变量不设默认值，仅透传 app.env 中已有配置。
     declare -A vars_and_default_values=(
-        # update.sh
+        # package
         ["PIP_PROXY"]=""
         ["PACKAGE_CACHE_ROOT"]=""
-        ["GITHUB_PROXY"]=""
         ["PROXY_HOST"]=""
-        ["GITHUB_TOKEN"]=""
-        ["MOVIEPILOT_AUTO_UPDATE"]="release"
         ["MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE"]="true"
         ["MOVIEPILOT_FORCE_CHOWN"]="false"
         ["MOVIEPILOT_SAFE_MODE"]="false"
-        ["BROWSER_EMULATION"]="cloakbrowser"
 
         # cert
         ["ENABLE_SSL"]="false"
@@ -337,7 +333,7 @@ function diagnostic_keepalive() {
 # 插件依赖和主程序共用同一套 venv 时，历史安装记录可能已经污染环境，
 # 这里优先在真正拉起后端前做一次自愈，避免容器反复起不来。
 function ensure_backend_runtime_dependencies() {
-    local probe_code="import alembic, cloakbrowser, fastapi, pydantic, pydantic_core, pydantic_settings, sqlalchemy, starlette, uvicorn; from pydantic import BaseModel, Field"
+    local probe_code="import alembic, fastapi, pydantic, pydantic_core, pydantic_settings, sqlalchemy, starlette, uvicorn; from pydantic import BaseModel, Field"
 
     INFO "→ 启动前检查后端核心依赖..."
     if "${VENV_PATH}/bin/python3" -c "${probe_code}" >/dev/null 2>&1; then
@@ -388,15 +384,7 @@ function correct_home_permissions() {
     [ -e "${HOME}" ] || return 0
 
     chown moviepilot:moviepilot "${HOME}"
-    [ -e "${HOME}/.cloakbrowser" ] && chown -h moviepilot:moviepilot "${HOME}/.cloakbrowser"
-
-    if is_truthy_value "${MOVIEPILOT_FORCE_CHOWN:-false}"; then
-        [ -e "${HOME}/.cloakbrowser" ] && chown -R moviepilot:moviepilot "${HOME}/.cloakbrowser"
-    elif [ -e "${HOME}/.cloakbrowser" ]; then
-        INFO "→ 默认跳过 ${HOME}/.cloakbrowser 递归权限校正，如遇浏览器缓存权限错误可设置 MOVIEPILOT_FORCE_CHOWN=true 后重启一次。"
-    fi
-
-    find "${HOME}" -mindepth 1 -maxdepth 1 ! -name ".cloakbrowser" -exec chown -R moviepilot:moviepilot {} +
+    find "${HOME}" -mindepth 1 -maxdepth 1 -exec chown -R moviepilot:moviepilot {} +
 }
 
 function chown_plugin_runtime_path() {
@@ -432,35 +420,8 @@ function correct_file_permissions() {
 load_config_from_app_env
 apply_package_cache_env
 
-# 一次性升级标记仅影响本次启动，避免把临时升级模式带入运行中的 Python 进程
-ONE_SHOT_UPDATE_FLAG="${CONFIG_DIR}/temp/moviepilot.pending_update"
-ONE_SHOT_UPDATE_APPLIED="false"
-MOVIEPILOT_AUTO_UPDATE_ORIGINAL="${MOVIEPILOT_AUTO_UPDATE}"
-if [ -f "${ONE_SHOT_UPDATE_FLAG}" ]; then
-    ONE_SHOT_UPDATE_MODE="$(tr -d '\r\n' < "${ONE_SHOT_UPDATE_FLAG}" | tr '[:upper:]' '[:lower:]')"
-    rm -f "${ONE_SHOT_UPDATE_FLAG}"
-    if [ "${ONE_SHOT_UPDATE_MODE}" = "true" ]; then
-        ONE_SHOT_UPDATE_MODE="release"
-    fi
-    if [ "${ONE_SHOT_UPDATE_MODE}" = "release" ] || [ "${ONE_SHOT_UPDATE_MODE}" = "dev" ]; then
-        INFO "检测到一次性升级标记，本次启动将执行 ${ONE_SHOT_UPDATE_MODE} 升级..."
-        MOVIEPILOT_AUTO_UPDATE="${ONE_SHOT_UPDATE_MODE}"
-        ONE_SHOT_UPDATE_APPLIED="true"
-    elif [ -n "${ONE_SHOT_UPDATE_MODE}" ]; then
-        WARN "检测到无效的一次性升级模式：${ONE_SHOT_UPDATE_MODE}，已忽略"
-    fi
-fi
-
 # 使用env配置渲染 nginx 配置
 render_nginx_config
-
-# 自动更新
-cd /
-source /usr/local/bin/mp_update.sh
-if [ "${ONE_SHOT_UPDATE_APPLIED}" = "true" ]; then
-    MOVIEPILOT_AUTO_UPDATE="${MOVIEPILOT_AUTO_UPDATE_ORIGINAL}"
-fi
-cd /app || exit
 
 # 更改 moviepilot userid 和 groupid
 groupmod -o -g "${PGID}" moviepilot
@@ -471,26 +432,6 @@ correct_file_permissions
 
 # 启动前优先确认主运行环境仍然健康，避免插件依赖污染导致服务直接起不来。
 ensure_backend_runtime_dependencies
-
-# 下载浏览器内核
-function install_browser_kernel() {
-  local emulation="${BROWSER_EMULATION:-cloakbrowser}"
-  emulation="$(normalize_env_value "${emulation}")"
-  local proxy="${HTTPS_PROXY:-${https_proxy:-$PROXY_HOST}}"
-
-  if [ "${emulation}" != "cloakbrowser" ] && [ "${emulation}" != "flaresolverr" ] && [ -n "${emulation}" ]; then
-    WARN "浏览器仿真类型 ${emulation} 已按 CloakBrowser 处理。"
-  fi
-
-  INFO "下载 CloakBrowser 浏览器内核"
-  if [[ "$proxy" =~ ^https?:// ]]; then
-    HTTPS_PROXY="$proxy" gosu moviepilot:moviepilot python -m cloakbrowser install
-  else
-    gosu moviepilot:moviepilot python -m cloakbrowser install
-  fi
-}
-
-install_browser_kernel
 
 # 证书管理
 source /app/docker/cert.sh

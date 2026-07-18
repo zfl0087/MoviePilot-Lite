@@ -26,7 +26,6 @@ CheckFunc = Callable[["DoctorRunnerProtocol"], None]
 
 CORE_DEPENDENCIES = (
     "alembic",
-    "cloakbrowser",
     "fastapi",
     "pydantic",
     "pydantic_core",

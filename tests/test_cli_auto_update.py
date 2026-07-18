@@ -3,27 +3,20 @@ from __future__ import annotations
 import importlib.util
 import sys
 import tempfile
-import unittest
 import uuid
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "app" / "cli.py"
 
 
 class _DummySystemHelper:
-    @staticmethod
-    def consume_one_shot_update_mode():
-        return None
-
-    @staticmethod
-    def get_auto_update_mode():
-        return "false"
+    """为隔离加载 CLI 提供最小系统帮助器。"""
 
 
-def load_cli_module():
+def _load_cli_module():
     with tempfile.TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
         settings = SimpleNamespace(
@@ -84,76 +77,53 @@ def load_cli_module():
         return module
 
 
-class CliAutoUpdateTests(unittest.TestCase):
-    def test_resolve_auto_update_targets_only_queries_backend_release(self):
-        module = load_cli_module()
+def _service_result(port: int):
+    return {
+        "started": True,
+        "runtime": {"port": port, "host": "127.0.0.1"},
+        "process": SimpleNamespace(pid=1234),
+        "health": {},
+    }
 
-        with patch.object(module, "_latest_release_tag", return_value="v2.10.12") as latest_mock:
-            backend_ref = module._resolve_auto_update_targets("release")
 
-        latest_mock.assert_called_once_with(
-            module.BACKEND_RELEASES_API,
-            repo="jxxghp/MoviePilot",
-            prefix="v2",
-        )
-        self.assertEqual(backend_ref, "v2.10.12")
+def test_start_does_not_run_auto_update(monkeypatch) -> None:
+    """CLI start 在服务停止时也不得执行官方自动更新。"""
+    module = _load_cli_module()
+    auto_update = Mock(side_effect=AssertionError("Lite start 不得执行自动更新"))
+    monkeypatch.setattr(module, "_best_effort_auto_update", auto_update, raising=False)
+    monkeypatch.setattr(module, "_ensure_frontend_not_running_alone", Mock())
+    monkeypatch.setattr(module, "_managed_backend_status", lambda: ("stopped", None, None, None))
+    monkeypatch.setattr(module, "_managed_frontend_status", lambda: ("stopped", None, None, None))
+    monkeypatch.setattr(module, "_start_backend_service", lambda **_kwargs: _service_result(3001))
+    monkeypatch.setattr(module, "_start_frontend_service", lambda **_kwargs: _service_result(3000))
+    monkeypatch.setattr(module.click, "echo", Mock())
 
-    def test_best_effort_auto_update_does_not_pass_frontend_version_override(self):
-        module = load_cli_module()
-        run_result = SimpleNamespace(returncode=0, stdout="ok")
+    module.start.callback(timeout=1, safe=False)
 
-        with patch.object(module, "_auto_update_mode", return_value="release"), patch.object(
-            module, "_resolve_auto_update_targets", return_value="v2.10.12"
-        ), patch.object(module.subprocess, "run", return_value=run_result) as run_mock, patch.object(
-            module.click, "echo"
-        ):
-            module._best_effort_auto_update()
+    auto_update.assert_not_called()
 
-        command = run_mock.call_args.args[0]
-        self.assertEqual(command[1:5], [str(module._repo_root() / "scripts" / "local_setup.py"), "update", "all", "--ref"])
-        self.assertNotIn("--frontend-version", command)
 
-    def test_best_effort_auto_update_passes_package_env_and_overrides_proxy(self):
-        module = load_cli_module()
-        module.settings.PROXY_HOST = "http://proxy.example:7890"
-        module.settings.PIP_PROXY = "https://mirror.example/simple"
-        run_result = SimpleNamespace(returncode=0, stdout="ok")
+def test_restart_does_not_run_auto_update(monkeypatch) -> None:
+    """CLI restart 必须只重启当前 Lite 代码，不得先执行更新。"""
+    module = _load_cli_module()
+    auto_update = Mock(side_effect=AssertionError("Lite restart 不得执行自动更新"))
+    monkeypatch.setattr(module, "_best_effort_auto_update", auto_update, raising=False)
+    monkeypatch.setattr(module, "_stop_frontend_service", Mock())
+    monkeypatch.setattr(module, "_stop_backend_service", Mock())
+    monkeypatch.setattr(module, "_start_backend_service", lambda **_kwargs: _service_result(3001))
+    monkeypatch.setattr(module, "_start_frontend_service", lambda **_kwargs: _service_result(3000))
+    monkeypatch.setattr(module.click, "echo", Mock())
 
-        with patch.dict(module.os.environ, {"HTTPS_PROXY": "http://old.example:8080"}, clear=False), patch.object(
-            module, "_auto_update_mode", return_value="release"
-        ), patch.object(module, "_resolve_auto_update_targets", return_value="v2.10.12"), patch.object(
-            module.subprocess, "run", return_value=run_result
-        ) as run_mock, patch.object(
-            module.click, "echo"
-        ):
-            module._best_effort_auto_update()
+    module.restart.callback(start_timeout=1, stop_timeout=1, force=False)
 
-        env = run_mock.call_args.kwargs["env"]
-        self.assertEqual(env["HTTPS_PROXY"], "http://proxy.example:7890")
-        self.assertEqual(env["PIP_PROXY"], "https://mirror.example/simple")
-        self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(module.settings.PACKAGE_CACHE_PATH))
-        self.assertEqual(env["PIP_CACHE_DIR"], str(module.settings.PACKAGE_CACHE_PATH / "pip"))
-        self.assertEqual(env["UV_CACHE_DIR"], str(module.settings.PACKAGE_CACHE_PATH / "uv"))
+    auto_update.assert_not_called()
 
-    def test_best_effort_auto_update_derives_tool_cache_from_existing_root(self):
-        module = load_cli_module()
-        run_result = SimpleNamespace(returncode=0, stdout="ok")
-        package_cache_root = Path("/custom/package-cache-root")
 
-        with patch.dict(
-            module.os.environ,
-            {
-                "PACKAGE_CACHE_ROOT": str(package_cache_root),
-            },
-            clear=False,
-        ), patch.object(module, "_auto_update_mode", return_value="release"), patch.object(
-            module, "_resolve_auto_update_targets", return_value="v2.10.12"
-        ), patch.object(module.subprocess, "run", return_value=run_result) as run_mock, patch.object(
-            module.click, "echo"
-        ):
-            module._best_effort_auto_update()
+def test_cli_source_has_no_official_auto_update_implementation() -> None:
+    """运行 CLI 源码不得保留官方 Release 查询或本地更新执行器。"""
+    source = MODULE_PATH.read_text(encoding="utf-8")
 
-        env = run_mock.call_args.kwargs["env"]
-        self.assertEqual(env["PACKAGE_CACHE_ROOT"], str(package_cache_root))
-        self.assertEqual(env["PIP_CACHE_DIR"], str(package_cache_root / "pip"))
-        self.assertEqual(env["UV_CACHE_DIR"], str(package_cache_root / "uv"))
+    assert "_best_effort_auto_update" not in source
+    assert "BACKEND_RELEASES_API" not in source
+    assert "scripts\" / \"local_setup.py" not in source
+    assert "consume_one_shot_update_mode" not in source

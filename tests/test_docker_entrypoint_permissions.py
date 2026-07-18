@@ -1,10 +1,17 @@
 import os
+import shutil
 import subprocess
 import textwrap
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
+pytestmark = pytest.mark.skipif(
+    shutil.which("bash") is None,
+    reason="Docker entrypoint 权限合同需要 Linux/Bash 环境",
+)
 
 
 def _write_entrypoint_functions(tmp_path: Path) -> Path:
@@ -34,6 +41,7 @@ def _write_fake_chown(tmp_path: Path) -> Path:
 
 
 def _run_permission_case(tmp_path: Path, body: str, env: dict[str, str] | None = None) -> str:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     functions = _write_entrypoint_functions(tmp_path)
     fake_bin = _write_fake_chown(tmp_path)
     chown_log = tmp_path / "chown.log"
@@ -42,15 +50,12 @@ def _run_permission_case(tmp_path: Path, body: str, env: dict[str, str] | None =
     home_dir = tmp_path / "home"
     (app_dir / "app" / "plugins").mkdir(parents=True)
     public_dir.mkdir()
-    (home_dir / ".cloakbrowser").mkdir(parents=True)
+    (home_dir / "cache").mkdir(parents=True)
     (home_dir / "runtime").mkdir()
     (app_dir / "app" / "plugins" / "plugin.py").write_text("# plugin\n", encoding="utf-8")
     (public_dir / "index.html").write_text("<!doctype html>\n", encoding="utf-8")
-    (home_dir / ".cloakbrowser" / "chrome").write_text("browser cache\n", encoding="utf-8")
+    (home_dir / "cache" / "state").write_text("cache\n", encoding="utf-8")
     (home_dir / "runtime" / "state").write_text("state\n", encoding="utf-8")
-    external_target = tmp_path / "external-target"
-    external_target.write_text("external\n", encoding="utf-8")
-    (app_dir / "external-link").symlink_to(external_target)
 
     case_env = {
         **os.environ,
@@ -152,7 +157,8 @@ def test_plugin_directory_chowns_only_root_directory_when_owner_mismatches(tmp_p
     assert log == f"-h moviepilot:moviepilot {tmp_path}/app/app/plugins\n"
 
 
-def test_home_permissions_skip_cloakbrowser_cache_by_default(tmp_path: Path) -> None:
+def test_home_permissions_recursively_correct_all_runtime_children(tmp_path: Path) -> None:
+    """普通 HOME 子目录必须使用统一的递归修权语义。"""
     log = _run_permission_case(
         tmp_path,
         'HOME="${HOME_DIR}" correct_home_permissions',
@@ -160,18 +166,25 @@ def test_home_permissions_skip_cloakbrowser_cache_by_default(tmp_path: Path) -> 
 
     lines = log.splitlines()
     assert f"moviepilot:moviepilot {tmp_path}/home" in lines
-    assert f"-h moviepilot:moviepilot {tmp_path}/home/.cloakbrowser" in lines
-    assert f"-R moviepilot:moviepilot {tmp_path}/home/runtime" in lines
-    assert not any(line.startswith("-R ") and ".cloakbrowser" in line for line in lines)
+    recursive_line = next(line for line in lines if line.startswith("-R "))
+    assert f"{tmp_path}/home/cache" in recursive_line
+    assert f"{tmp_path}/home/runtime" in recursive_line
 
 
-def test_home_permissions_force_chown_repairs_cloakbrowser_cache(tmp_path: Path) -> None:
-    log = _run_permission_case(
-        tmp_path,
+def test_home_permissions_are_independent_of_image_force_chown(tmp_path: Path) -> None:
+    """镜像强制修权开关不得改变普通 HOME 的统一修权合同。"""
+    default_log = _run_permission_case(
+        tmp_path / "default",
+        'HOME="${HOME_DIR}" correct_home_permissions',
+    )
+    forced_log = _run_permission_case(
+        tmp_path / "forced",
         'MOVIEPILOT_FORCE_CHOWN=yes HOME="${HOME_DIR}" correct_home_permissions',
     )
 
-    assert f"-R moviepilot:moviepilot {tmp_path}/home/.cloakbrowser" in log
+    assert default_log.replace(str(tmp_path / "default"), "<root>") == forced_log.replace(
+        str(tmp_path / "forced"), "<root>"
+    )
 
 
 def test_runtime_writable_paths_are_still_corrected(tmp_path: Path) -> None:
@@ -183,11 +196,15 @@ def test_runtime_writable_paths_are_still_corrected(tmp_path: Path) -> None:
 
     lines = log.splitlines()
     assert f"moviepilot:moviepilot {tmp_path}/home" in lines
-    assert f"-h moviepilot:moviepilot {tmp_path}/home/.cloakbrowser" in lines
-    assert f"-R moviepilot:moviepilot {tmp_path}/home/runtime" in lines
+    home_line = next(
+        line
+        for line in lines
+        if line.startswith("-R ") and f"{tmp_path}/home/" in line
+    )
+    assert f"{tmp_path}/home/cache" in home_line
+    assert f"{tmp_path}/home/runtime" in home_line
     assert f"-R moviepilot:moviepilot {tmp_path}/config /var/lib/nginx /var/log/nginx" in lines
     assert "moviepilot:moviepilot /etc/hosts /tmp" in lines
-    assert not any(line.startswith("-R ") and ".cloakbrowser" in line for line in lines)
     assert not any(f"{tmp_path}/app " in line for line in lines)
     assert not any(f"{tmp_path}/public" in line for line in lines)
 
@@ -243,3 +260,15 @@ def test_backend_ready_timeout_accepts_leading_zero_decimal(tmp_path: Path) -> N
 
     assert "MOVIEPILOT_BACKEND_READY_TIMEOUT=08 无效" not in output
     assert "MoviePilot Web 已可访问" in output
+
+
+def test_diagnostic_keepalive_preserves_doctor_and_debug_shell() -> None:
+    """后端异常后必须运行 Doctor 并保留容器调试入口。"""
+    entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    function_body = entrypoint.split("function diagnostic_keepalive()", 1)[1].split(
+        "function ensure_backend_runtime_dependencies()", 1
+    )[0]
+
+    assert "app.cli doctor" in function_body
+    assert "MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE" in function_body
+    assert "while true" in function_body

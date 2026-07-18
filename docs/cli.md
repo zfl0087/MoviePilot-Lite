@@ -2,6 +2,8 @@
 
 `moviepilot` 是 MoviePilot 本地源码模式的一体化入口，负责本地安装、初始化、更新，以及前后端服务管理。
 
+> MoviePilot Lite 正式部署只支持固定 Docker 候选镜像，不支持在运行容器内原地更新。本页的显式 `moviepilot update` 命令仅用于维护者管理源码工作区，不属于 Lite 容器运行合同；Lite 升级必须替换为经过审核且固定版本的候选镜像。
+
 ## 一键安装
 
 ```shell
@@ -370,7 +372,7 @@ moviepilot version
 
 - `start` 会先启动后端，再启动前端
 - `start --safe` 会以安全模式启动后端，本次启动跳过插件、调度器、监控、命令和工作流等后台扩展能力，不修改用户配置
-- 如果开启了 `MOVIEPILOT_AUTO_UPDATE=release|true|dev`，`start/restart` 会在启动前尽力执行一次本地自动更新；更新失败只告警，不阻断当前启动
+- MoviePilot Lite 的 `start/restart` 只管理当前固定代码，不读取 `MOVIEPILOT_AUTO_UPDATE`、不消费历史一次性升级标记，也不在启动前查询或执行官方更新
 - 通过系统内置的重启入口触发重启时，本地 CLI 安装模式也会复用同一套前后端进程管理完成重启
 - 前端默认监听 `NGINX_PORT`，默认值 `3000`
 - 后端默认监听 `PORT`，默认值 `3001`
