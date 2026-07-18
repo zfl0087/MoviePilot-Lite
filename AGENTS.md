@@ -2,6 +2,35 @@
 
 This file is the primary instruction set for all AI agents and LLMs working in this repository. Local documentation takes precedence over general training data. You must follow this file and the rule documents it references.
 
+## MoviePilot Lite 项目规则
+
+本仓库是 MoviePilot Lite 后端。处理本项目任务前，必须完整阅读并遵守 `PROJECT_BRIEF.md`。
+
+### 规则优先关系
+
+- `PROJECT_BRIEF.md` 决定 Lite 的产品范围、功能保留与移除以及兼容目标。
+- 官方 `AGENTS.md` 及其引用文档继续约束架构、编码、测试和安全标准。
+- 两者发生疑似冲突时：产品范围以 `PROJECT_BRIEF.md` 为准，具体实现以官方工程规范为准。
+- 如果无法同时满足，停止实施并向用户说明冲突，不得自行决定。
+
+### 分步审批
+
+- 只读检查可以用于准备方案。
+- 修改文件、创建分支、提交、推送、同步上游或运行会改变状态的操作前，必须先说明本步骤的准确范围并取得用户明确同意。
+- 每个获批步骤完成后必须停止并汇报，不得自动执行下一步骤。
+
+### 上游兼容
+
+- 保持官方源码结构和提交历史，尽量将 Lite 改动隔离为小范围、可测试的变更。
+- 不得向 `upstream` 推送；官方仓库只作为只读更新来源。
+- 合并官方更新时，不得静默恢复已经明确移除的功能，也不得破坏 Lite 保留功能。
+- 不得为了精简而只隐藏前端入口；实际运行链路、依赖和后台任务必须按 `PROJECT_BRIEF.md` 裁剪。
+
+### 安全与发布
+
+- 不得提交令牌、Cookie、网盘凭据或其他秘密信息。
+- 未经用户明确批准，不得公开仓库、镜像、安装包或发布版本。
+
 ---
 
 ## Task-to-Documentation Mapping

@@ -1,85 +1,136 @@
-# MoviePilot
+# MoviePilot Lite
 
-简体中文 | [English](README_EN.md)
+> **非官方、私有、非商业的 MoviePilot v2 精简构建。**
+>
+> **当前状态：基础设计阶段，尚无可部署版本或可用镜像。**
 
-![GitHub Repo stars](https://img.shields.io/github/stars/jxxghp/MoviePilot?style=for-the-badge)
-![GitHub forks](https://img.shields.io/github/forks/jxxghp/MoviePilot?style=for-the-badge)
-![GitHub contributors](https://img.shields.io/github/contributors/jxxghp/MoviePilot?style=for-the-badge)
-![GitHub repo size](https://img.shields.io/github/repo-size/jxxghp/MoviePilot?style=for-the-badge)
-![GitHub issues](https://img.shields.io/github/issues/jxxghp/MoviePilot?style=for-the-badge)
-![Docker Pulls](https://img.shields.io/docker/pulls/jxxghp/moviepilot?style=for-the-badge)
-![Docker Pulls V2](https://img.shields.io/docker/pulls/jxxghp/moviepilot-v2?style=for-the-badge)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Synology-blue?style=for-the-badge)
+MoviePilot Lite 不是 MoviePilot 官方版本，不由 MoviePilot 官方团队维护或提供支持。请勿将 Lite 特有问题提交到官方项目。
 
-基于 [NAStool](https://github.com/NAStool/nas-tools) 部分代码重新设计，聚焦自动化核心需求，减少问题同时更易于扩展和维护。
+本项目面向个人和家庭自托管的网盘媒体管理场景，重点保留网盘、元数据识别、文件整理、插件、消息通知和媒体服务器能力，同时移除 PT、下载器、影视订阅及其他非目标运行链路。
 
-# 仅用于学习交流使用，请勿在任何国内平台宣传该项目！
+精简目标不是隐藏菜单，而是在构建和运行时真正做到：不安装非目标依赖、不导入和注册非目标模块、不启动相关服务和后台任务，并尽量维持官方源码结构以持续跟踪上游更新。
 
-发布频道：https://t.me/moviepilot_channel
+## 核心流程
 
-## 主要特性
-
-- 聚焦影视自动化的核心流程：订阅、搜索、下载、整理、刮削、媒体库刷新与消息通知。
-- 前后端分离，后端基于 FastAPI，前端基于 Vue 3，部署和扩展边界更清晰。
-- 支持下载器、媒体服务器、元数据源、消息渠道、插件、工作流和 AI Agent 等能力组合。
-- 更完整的功能介绍、截图和使用入口见官网：https://movie-pilot.org
-
-## 安装使用
-
-推荐优先使用 Docker 部署，常用镜像包括 `jxxghp/moviepilot-v2` 和 `jxxghp/moviepilot`。Compose 示例、环境变量、目录映射和升级方式以官方 Wiki 为准：
-
-- 官方 Wiki：https://wiki.movie-pilot.org
-- PostgreSQL 部署说明：[docs/postgresql-setup.md](docs/postgresql-setup.md)
-
-也可以使用本地 CLI 以源码模式安装和管理 MoviePilot：
-
-```shell
-curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/scripts/bootstrap-local.sh | bash
+```text
+网盘文件或目录
+  → 元数据识别与人工纠正
+  → 重命名、刮削和文件整理
+  → STRM 或媒体库内容更新
+  → 消息通知
+  → Emby / Jellyfin / Plex 刷新
 ```
 
-安装完成后使用 `moviepilot` 命令完成初始化、启动、停止、更新和配置查看。完整命令见 [docs/cli.md](docs/cli.md)。
+消息渠道中的115分享链接处理流程：
 
-## Agent
+```text
+官方消息渠道接收115分享链接
+  → 使用官方身份和权限逻辑校验
+  → MoviePilot Lite 识别分享链接
+  → 调用用户手动安装的 P115StrmHelper
+  → 完成转存、整理及 STRM 处理
+  → 通过原消息渠道返回结果
+```
 
-1. MoviePilot 自带智能体能力，可在完成模型配置后，通过自然语言调用系统工具，辅助完成搜索、订阅、下载、整理、排障等管理任务。
-2. 其它智能体可以导入本仓库的 `skills/` 目录以获得 MoviePilot 操作能力；支持 `skills` CLI 的环境可使用：
+## 保留能力
 
-   ```shell
-   npx skills add https://github.com/jxxghp/MoviePilot
-   ```
+- 官方网盘及存储适配器的源码兼容，按实际配置延迟加载。
+- 115网盘授权、文件访问和分享链接转存，作为首个真实验收对象。
+- TMDB、豆瓣、Bangumi、TheTVDB、Fanart 等元数据底层能力。
+- 元数据识别、识别预览、人工纠正、重命名和刮削。
+- 文件浏览、文件管理、目录监控、手动整理、整理历史和失败重试。
+- 插件市场、手动安装、升级、插件页面、事件、定时任务和插件 API。
+- 官方消息渠道、通知发送、必要回调和115分享链接入站处理。
+- Emby、Jellyfin 和 Plex 的媒体库刷新、同步及查询。
+- 单管理员密码登录、登录会话、Token 和 `API_TOKEN`。
+- SQLite、进程内缓存和 `ffprobe`。
+- Docker `linux/amd64` 和 `linux/arm64`。
 
-   内置 Skills 列表见 [skills/](skills/)，自定义 Skill 可参考 [skills/create-moviepilot-skill/SKILL.md](skills/create-moviepilot-skill/SKILL.md)。
-3. 其它 MCP 客户端可以通过 MoviePilot 的 MCP 端点 `/api/v1/mcp` 调用工具，认证方式、客户端配置和工具 API 见 [docs/mcp-api.md](docs/mcp-api.md)。
+## 移除能力
 
+- PT站点、索引器、站点资源包、`AUTH_SITE` 及其在线校验链路。
+- qBittorrent、Transmission、rTorrent 等下载器及下载任务。
+- 影视订阅、资源搜索、推荐、探索、榜单和人物发现。
+- Agent、LLM、MCP、Skills、语音和相关模型依赖。
+- 工作流编辑器、执行引擎和后台任务。
+- CookieCloud、浏览器内核、Playwright、OCR 和 FlareSolverr。
+- PostgreSQL、Redis、多用户、注册、角色系统、SSO 和辅助认证。
+- Radarr、Sonarr 和 CookieCloud 兼容接口。
+- `ffmpeg` 及依赖它的插件功能。
+- 非必要的统计和数据上报。
 
-## 参与开发
+## 115网盘STRM助手
 
-开发前请先阅读仓库规则和本地环境说明，保持变更聚焦，通过测试后再提交 PR。常用入口：
+[P115StrmHelper（115网盘STRM助手）](https://github.com/DDSRem-Dev/MoviePilot-Plugins/tree/main/docs/p115strmhelper)是目标115工作流的必装插件，但不包含在 MoviePilot Lite 核心中。
 
-- 文档规则入口：[docs/rules/README.md](docs/rules/README.md)
-- 开发环境与本地源码运行：[docs/development-setup.md](docs/development-setup.md)
-- 测试说明：[docs/testing.md](docs/testing.md)
-- 新站点适配采集与 Feature Request 提交：[docs/site-adapter-capture.md](docs/site-adapter-capture.md)
-- REST API 文档：https://api.movie-pilot.org
-- 插件开发说明：https://wiki.movie-pilot.org/zh/plugindev
+- 必须由用户手动安装和配置。
+- Lite 不预装、不自动安装、不在后台自动下载或静默升级。
+- 每个 Lite 版本只支持经过明确测试的插件版本或版本范围。
+- 插件缺失、未启用或不兼容时，MoviePilot Lite 仍可启动，但115分享转存和相关 STRM 功能不可用，并应显示明确提示。
+- 插件内部的 PT、搜索、下载、Agent、MCP、浏览器或其他已移除能力不属于 Lite 支持范围。
+- 第三方插件可能有独立的隐私、遥测和外部服务设置，安装前必须检查。
 
-## 相关项目
+## 安装
 
-- [MoviePilot-Frontend](https://github.com/jxxghp/MoviePilot-Frontend)
-- [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
-- [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)
-- [MoviePilot-Server](https://github.com/jxxghp/MoviePilot-Server)
-- [MoviePilot-Rust](https://github.com/jxxghp/MoviePilot-Rust)
-- [MoviePilot-Wiki](https://github.com/jxxghp/MoviePilot-Wiki)
+MoviePilot Lite 尚未形成首个可部署版本。
 
-## 免责申明
+目前没有可用的 Lite 镜像、Compose 示例或安装命令。请勿把 MoviePilot 官方镜像当作 Lite 镜像使用。
 
-- 本软件仅供学习交流使用，任何人不得将本软件用于商业用途，任何人不得将本软件用于违法犯罪活动，软件对用户行为不知情，一切责任由使用者承担。
-- 本软件代码开源，基于开源代码进行修改，人为去除相关限制导致软件被分发、传播并造成责任事件的，需由代码修改发布者承担全部责任，不建议对用户认证机制进行规避或修改并公开发布。
-- 本项目不接受捐赠，没有在任何地方发布捐赠信息页面，软件本身不收费也不提供任何收费相关服务，请仔细辨别避免误导。
+首个候选版本必须先通过后端、前端、Docker 和兼容性测试，再在隔离 Canary 实例完成真实115转存、整理、通知和媒体服务器刷新验证。正式安装说明只会使用固定版本号和镜像摘要，不使用浮动的 `latest`。
 
-## 贡献者
+## 兼容范围
 
-<a href="https://github.com/jxxghp/MoviePilot/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=jxxghp/MoviePilot" />
-</a>
+- 正式数据库只支持 SQLite。
+- 保留官方 `/config` 目录迁移和回退目标，首次使用官方数据启动 Lite 前必须备份。
+- 115是首个真实账号验收的网盘；其他官方存储适配器保留源码兼容，但首版不承诺全部真实验收。
+- Emby、Jellyfin 和 Plex 保持相同官方版本的接口语义。
+- 只正式支持明确配对的 Lite 后端和 Lite 前端。
+- 插件兼容性按插件及版本分别记录，不承诺兼容所有官方或第三方插件。
+
+完整兼容合同见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
+
+## 项目文档
+
+- [PROJECT_BRIEF.md](PROJECT_BRIEF.md)：产品目标、保留范围、移除范围和验收指标。
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：能力配置、导入门控、前后端边界和构建裁剪。
+- [docs/UPSTREAM_SYNC.md](docs/UPSTREAM_SYNC.md)：上游同步、分支、测试、候选发布和回退流程。
+- [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)：配置、数据库、API、插件和部署兼容矩阵。
+- [AGENTS.md](AGENTS.md)：AI代理和项目实施规则。
+
+## 上游与版本
+
+MoviePilot Lite 基于以下官方项目：
+
+- 后端：[jxxghp/MoviePilot](https://github.com/jxxghp/MoviePilot)，跟踪 `v2`。
+- 前端：[jxxghp/MoviePilot-Frontend](https://github.com/jxxghp/MoviePilot-Frontend)，跟踪 `v2`。
+- 官方插件市场：[jxxghp/MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)。
+
+首个实现基线：
+
+| 组件 | 版本 | 官方提交 |
+|---|---|---|
+| 后端 | `v2.14.5` | `8b5524a321c940f337873cefa54ba6a58462f9a4` |
+| 前端 | `v2.14.5` | `435e9ecfdd4febf791fd581b3be9233816cebf7f` |
+
+对应基线的[官方后端 README](https://github.com/jxxghp/MoviePilot/blob/8b5524a321c940f337873cefa54ba6a58462f9a4/README.md)可用于查看未经 Lite 改写的官方说明。
+
+Lite 版本格式为 `v<官方版本>-lite.<修订号>`，例如 `v2.14.5-lite.1`。每个版本必须记录官方后端提交、官方前端提交、Lite 后端提交、Lite 前端提交和 Docker 镜像摘要。
+
+## 分发与许可证
+
+MoviePilot Lite 只用于个人、家庭及少量可信对象之间的非公开、非商业分享，不建立公众下载渠道，不作为 SaaS 或商业产品运营。
+
+- 本项目继承并保留上游的 GNU General Public License v3.0、版权声明和修改记录。
+- 向他人分发镜像或二进制时，必须同时提供与该版本对应的完整源码和版本追溯信息。
+- 不接受捐赠，不提供收费服务，也不允许将本项目用于商业用途或违法活动。
+- MoviePilot 官方明确不建议规避或修改用户认证机制后公开分发。MoviePilot Lite 移除了 PT 站点用户认证，因此修改、私下分发和使用产生的责任由 Lite 修改者、分发者和使用者自行承担。
+- 本项目不对第三方插件、外部 API、网盘服务或用户数据损失承担保证责任，部署前必须备份重要数据。
+
+完整许可证见 [LICENSE](LICENSE)。
+
+## 安全提示
+
+- 不得提交115 Token、Cookie、消息渠道 Token、管理员密码、`API_TOKEN`、数据库文件或真实 `/config`。
+- 真实网盘凭据只保存在部署实例的安全配置中，不进入普通 CI、构建日志或测试产物。
+- 第三方插件安装前必须核对来源、许可证、依赖、隐私政策和遥测设置。
+- 升级前固定当前镜像版本并备份 `/config`，不得依赖 `latest` 回退。
