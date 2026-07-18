@@ -4,19 +4,11 @@ import traceback
 from typing import Any, Union, Dict, Optional
 
 from app.chain import ChainBase
-from app.chain.download import DownloadChain
-from app.chain.message import MessageChain
-from app.chain.site import SiteChain
-from app.chain.skills import SkillsChain
-from app.chain.subscribe import SubscribeChain
-from app.chain.system import SystemChain
-from app.chain.transfer import TransferChain
 from app.core.event import Event as ManagerEvent, eventmanager, Event
 from app.core.plugin import PluginManager
 from app.helper.message import MessageHelper
 from app.helper.thread import ThreadHelper
 from app.log import logger
-from app.scheduler import Scheduler
 from app.schemas import Notification, CommandRegisterEventData
 from app.schemas.types import EventType, MessageChannel, ChainEventType
 from app.utils.object import ObjectUtils
@@ -54,87 +46,28 @@ class Command(metaclass=Singleton):
         self._commands = {}
         # 内建命令集合
         self._preset_commands = {
-            "/cookiecloud": {
-                "id": "cookiecloud",
-                "type": "scheduler",
-                "description": "同步站点",
-                "category": "站点",
-            },
-            "/sites": {
-                "func": SiteChain().remote_list,
-                "description": "管理站点",
-                "category": "站点",
-                "data": {},
-            },
             "/mediaserver_sync": {
                 "id": "mediaserver_sync",
                 "type": "scheduler",
                 "description": "同步媒体服务器",
                 "category": "管理",
             },
-            "/subscribes": {
-                "func": SubscribeChain().remote_list,
-                "description": "管理订阅",
-                "category": "订阅",
-                "data": {},
-            },
-            "/downloading": {
-                "func": DownloadChain().remote_downloading,
-                "description": "正在下载",
-                "category": "管理",
-                "data": {},
-            },
-            "/transfer": {
-                "id": "transfer",
-                "type": "scheduler",
-                "description": "下载文件整理",
-                "category": "管理",
-            },
-            "/redo": {
-                "func": TransferChain().remote_transfer,
-                "description": "手动整理",
-                "data": {},
-            },
             "/clear_cache": {
-                "func": SystemChain().remote_clear_cache,
+                "func": self._remote_clear_cache,
                 "description": "清理缓存",
                 "category": "管理",
                 "data": {},
             },
             "/restart": {
-                "func": SystemChain().restart,
+                "func": self._restart,
                 "description": "重启系统",
                 "category": "管理",
                 "data": {},
             },
             "/version": {
-                "func": SystemChain().version,
+                "func": self._version,
                 "description": "当前版本",
                 "category": "管理",
-                "data": {},
-            },
-            "/clear_session": {
-                "func": MessageChain().remote_clear_session,
-                "description": "清除会话",
-                "category": "管理",
-                "data": {},
-            },
-            "/stop_agent": {
-                "func": MessageChain().remote_stop_agent,
-                "description": "停止推理",
-                "category": "管理",
-                "data": {},
-            },
-            "/session_status": {
-                "func": MessageChain().remote_session_status,
-                "description": "会话状态",
-                "category": "智能体",
-                "data": {},
-            },
-            "/skills": {
-                "func": SkillsChain().remote_manage,
-                "description": "管理技能",
-                "category": "智能体",
                 "data": {},
             },
         }
@@ -146,12 +79,31 @@ class Command(metaclass=Singleton):
         self._rlock = threading.RLock()
         # 插件管理
         self.pluginmanager = PluginManager()
-        # 定时服务管理
-        self.scheduler = Scheduler()
         # 消息管理器
         self.messagehelper = MessageHelper()
         # 初始化命令
         self.init_commands()
+
+    @staticmethod
+    def _remote_clear_cache(channel, userid, source=None) -> None:
+        """按需加载系统链并执行缓存清理命令。"""
+        from app.chain.system import SystemChain
+
+        SystemChain().remote_clear_cache(channel, userid, source)
+
+    @staticmethod
+    def _restart(channel, userid, source=None) -> None:
+        """按需加载系统链并执行重启命令。"""
+        from app.chain.system import SystemChain
+
+        SystemChain().restart(channel, userid, source)
+
+    @staticmethod
+    def _version(channel, userid, source=None) -> None:
+        """按需加载系统链并返回版本信息。"""
+        from app.chain.system import SystemChain
+
+        SystemChain().version(channel, userid, source)
 
     def init_commands(self, pid: Optional[str] = None) -> None:
         """
@@ -312,7 +264,10 @@ class Command(metaclass=Singleton):
                 )
 
             # 执行定时任务
-            self.scheduler.start(job_id=command.get("id"))
+            from app.scheduler import Scheduler
+
+            if not Scheduler().start(job_id=command.get("id")):
+                raise RuntimeError("定时任务不存在、已禁用或正在运行")
 
             if userid:
                 CommandChain().post_message(

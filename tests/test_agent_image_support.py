@@ -197,6 +197,7 @@ class AgentImageSupportTest(unittest.TestCase):
         self.assertEqual(handle_kwargs["text"], "")
         self.assertEqual(handle_kwargs["files"][0].ref, "tg://document_file_id/doc-1")
 
+    @unittest.skip("Lite 固定移除 Agent 消息路由")
     def test_image_message_routes_to_agent_even_when_global_agent_is_disabled(self):
         chain = MessageChain()
 
@@ -220,6 +221,7 @@ class AgentImageSupportTest(unittest.TestCase):
 
         handle_ai_message.assert_called_once()
 
+    @unittest.skip("Lite 固定移除 Agent 与语音消息路由")
     def test_audio_message_routes_to_agent_without_forcing_voice_reply(self):
         chain = MessageChain()
 
@@ -245,6 +247,7 @@ class AgentImageSupportTest(unittest.TestCase):
         self.assertTrue(handle_ai_message.call_args.kwargs["has_audio_input"])
         self.assertNotIn("reply_with_voice", handle_ai_message.call_args.kwargs)
 
+    @unittest.skip("Lite 固定移除 Agent 消息路由")
     def test_file_message_routes_to_agent_even_when_global_agent_is_disabled(self):
         chain = MessageChain()
 
@@ -432,6 +435,7 @@ class AgentImageSupportTest(unittest.TestCase):
         with patch.object(settings, "LLM_SUPPORT_IMAGE_INPUT", False):
             self.assertFalse(LLMHelper.supports_image_input())
 
+    @unittest.skip("Lite 固定移除 Agent 消息路由")
     def test_handle_ai_message_routes_images_to_files_when_image_input_disabled(self):
         chain = MessageChain()
 
@@ -477,6 +481,7 @@ class AgentImageSupportTest(unittest.TestCase):
             "/tmp/image_1.jpg",
         )
 
+    @unittest.skip("Lite 固定移除 Agent 与语音消息路由")
     def test_handle_ai_message_forwards_voice_input_to_agent_manager(self):
         """AI消息入队时应保留语音输入标记。"""
         chain = MessageChain()

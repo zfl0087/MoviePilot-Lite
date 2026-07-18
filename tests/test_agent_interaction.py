@@ -170,6 +170,7 @@ class TestAgentInteraction(unittest.TestCase):
         self.assertIn("质量门槛拒绝", result)
         async_post_message.assert_not_awaited()
 
+    @unittest.skip("Lite 固定移除 Agent 回调路由")
     def test_agent_interaction_callback_routes_selected_value_back_to_agent(self):
         chain = MessageChain()
         request = agent_interaction_manager.create_request(
@@ -228,6 +229,7 @@ class TestAgentInteraction(unittest.TestCase):
         message_put.assert_not_called()
         message_add.assert_not_called()
 
+    @unittest.skip("Lite 不恢复旧 Agent 回调路由")
     def test_legacy_agent_choice_callback_still_supported(self):
         chain = MessageChain()
         request = agent_interaction_manager.create_request(

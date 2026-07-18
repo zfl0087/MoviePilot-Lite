@@ -13,7 +13,7 @@ from app.db import SessionFactory
 from app.db.message_oper import MessageOper
 from app.db.models.message import Message
 from app.helper.interaction import AgentInteractionOption, agent_interaction_manager, media_interaction_manager
-from app.schemas.types import MessageChannel, NotificationType
+from app.schemas.types import EventType, MessageChannel, NotificationType
 
 
 def _clear_messages() -> None:
@@ -23,8 +23,8 @@ def _clear_messages() -> None:
         db.commit()
 
 
-def test_explicit_ai_message_bypasses_pending_media_interaction():
-    """显式 /ai 消息应绕过误触发的媒体交互状态并回到 Agent 会话。"""
+def test_explicit_ai_message_falls_through_to_plugin_message_event():
+    """Lite 不恢复 Agent 或媒体发现链，/ai 文本仍交给插件消息事件。"""
     chain = MessageChain()
     media_interaction_manager.clear()
     media_interaction_manager.create_or_replace(
@@ -43,7 +43,9 @@ def test_explicit_ai_message_bypasses_pending_media_interaction():
             return_value=True,
         ) as handle_media_interaction, patch.object(
             chain, "_handle_ai_message", return_value=True
-        ) as handle_ai_message:
+        ) as handle_ai_message, patch.object(
+            chain.eventmanager, "send_event"
+        ) as send_event:
             chain.handle_message(
                 channel=MessageChannel.Wechat,
                 source="wechat-test",
@@ -54,23 +56,20 @@ def test_explicit_ai_message_bypasses_pending_media_interaction():
     finally:
         media_interaction_manager.clear()
 
-    handle_ai_message.assert_called_once()
+    handle_ai_message.assert_not_called()
     handle_media_interaction.assert_not_called()
+    assert any(call.args[0] == EventType.UserMessage for call in send_event.call_args_list)
 
 
-def test_explicit_ai_message_is_not_recorded_to_message_history():
-    """显式 /ai 消息不登记到数据库或实时消息队列。"""
+def test_explicit_ai_message_is_recorded_as_normal_lite_message():
+    """Agent 已移除后，显式 /ai 文本按普通消息登记并广播给插件。"""
     chain = MessageChain()
 
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
         chain, "_record_user_message"
-    ) as record_user_message, patch(
-        "app.chain.message.agent_manager.process_message",
-        new_callable=AsyncMock,
-    ) as process_message, patch(
-        "app.chain.message.asyncio.run_coroutine_threadsafe",
-        side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
-    ):
+    ) as record_user_message, patch.object(
+        chain, "_handle_ai_message"
+    ) as handle_ai_message, patch.object(chain.eventmanager, "send_event") as send_event:
         chain.handle_message(
             channel=MessageChannel.Telegram,
             source="telegram-test",
@@ -79,8 +78,9 @@ def test_explicit_ai_message_is_not_recorded_to_message_history():
             text="/ai 帮我检查订阅",
         )
 
-    record_user_message.assert_not_called()
-    process_message.assert_called_once()
+    record_user_message.assert_called_once()
+    handle_ai_message.assert_not_called()
+    assert any(call.args[0] == EventType.UserMessage for call in send_event.call_args_list)
 
 
 def test_ask_user_choice_message_is_not_recorded_to_message_history():
@@ -165,8 +165,8 @@ def test_send_message_tool_disables_notification_history():
     assert notification.save_history is False
 
 
-def test_agent_choice_callback_is_not_recorded_to_message_history():
-    """Agent 按钮选择回传不登记到数据库或实时消息队列。"""
+def test_legacy_agent_choice_callback_does_not_resume_agent():
+    """Lite 收到旧 Agent 选择按钮时不得恢复 Agent 处理链。"""
     chain = MessageChain()
     request = agent_interaction_manager.create_request(
         session_id="session-choice",
@@ -183,18 +183,10 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
     )
 
     try:
-        with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
-            chain, "_record_user_message"
-        ) as record_user_message, patch.object(
-            chain, "edit_message", return_value=True
-        ), patch(
-            "app.chain.message.agent_manager.process_message",
-            new_callable=AsyncMock,
-        ) as process_message, patch(
-            "app.chain.message.asyncio.run_coroutine_threadsafe",
-            side_effect=lambda coro, _loop: (coro.close(), Mock())[1],
+        with patch.object(chain, "_handle_agent_choice_callback") as handle_agent, patch.object(
+            chain, "post_message"
         ):
-            chain._handle_callback(
+            handled = chain._handle_callback(
                 text=f"CALLBACK:agent_interaction:choice:{request.request_id}:1",
                 channel=MessageChannel.Telegram,
                 source="telegram-test",
@@ -206,5 +198,5 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
     finally:
         agent_interaction_manager.clear()
 
-    record_user_message.assert_not_called()
-    process_message.assert_called_once()
+    assert handled is False
+    handle_agent.assert_not_called()

@@ -1,11 +1,11 @@
 from typing import Any, List, Dict, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
-from app.chain.download import DownloadChain
 from app.chain.mediaserver import MediaServerChain
+from app.core.capability import Capability, is_capability_enabled
 from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.core.security import verify_token
@@ -114,6 +114,11 @@ def not_exists(
     """
     根据媒体信息查询缺失电影/剧集
     """
+    if not is_capability_enabled(Capability.DOWNLOADERS):
+        raise HTTPException(status_code=404, detail="Lite 不支持下载缺失查询")
+
+    from app.chain.download import DownloadChain
+
     # 媒体信息
     meta = MetaInfo(title=media_in.title)
     mtype = MediaType(media_in.type) if media_in.type else None

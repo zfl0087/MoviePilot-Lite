@@ -229,27 +229,14 @@ def test_module_startup_skips_site_auth_and_resource_checks(monkeypatch):
         forbidden_calls.append(True)
         raise AssertionError("Lite 启动不得执行 PT 认证副作用")
 
-    monkeypatch.setattr(modules_initializer, "DisplayHelper", _NoopOwner)
-    monkeypatch.setattr(modules_initializer, "DohHelper", _NoopOwner)
+    monkeypatch.setattr(modules_initializer.settings, "DOH_ENABLE", False)
     monkeypatch.setattr(modules_initializer, "ModuleManager", _NoopOwner)
     monkeypatch.setattr(modules_initializer, "EventManager", _NoopOwner)
     monkeypatch.setattr(modules_initializer, "SitesHelper", forbidden, raising=False)
     monkeypatch.setattr(modules_initializer, "ResourceHelper", forbidden, raising=False)
     monkeypatch.setattr(modules_initializer, "user_auth", forbidden, raising=False)
     monkeypatch.setattr(modules_initializer, "check_auth", forbidden, raising=False)
-    monkeypatch.setattr(modules_initializer, "init_agent", lambda: None)
     monkeypatch.setattr(modules_initializer, "start_frontend", lambda: None)
-    for method_name in (
-        "init_plugin_report",
-        "init_subscribe_report",
-        "get_user_uuid",
-        "get_github_user",
-    ):
-        monkeypatch.setattr(
-            modules_initializer.MoviePilotServerHelper,
-            method_name,
-            lambda: None,
-        )
 
     modules_initializer.init_modules()
 

@@ -10,7 +10,7 @@
 
 ## 2. 当前状态
 
-当前项目仍未形成可验收的 Lite 运行版本。固定能力配置、API 导入前门控、PT 用户认证运行链路以及顶层模块/存储适配器导入前门控已经有自动化测试证据；消息命令、剩余启动与调度所有者、依赖、Docker、前端及真实 115 Canary 仍未完成。因此本文档同时记录已实现边界和后续目标，不代表完整兼容认证。
+当前项目仍未形成可验收的 Lite 运行版本。固定能力配置、API 与模块导入前门控、PT 用户认证、启动 owner、Scheduler、内建命令、消息插件事件、Monitor/Transfer 导入隔离已经有自动化测试证据；依赖、Docker、前端及真实 115 Canary 仍未完成。因此本文档同时记录已实现边界和后续目标，不代表完整兼容认证。
 
 首个实现基线：
 
@@ -116,7 +116,7 @@ Lite 不伪造、不提高官方认证级别，也不使用固定成功结果模
 
 不支持的 API 不注册路由，访问时预期得到标准未找到响应。禁止保留返回空数据或虚假成功的兼容空壳。
 
-能力配置版本 2 已在正常 FastAPI 初始化路径完成主 API、Radarr/Sonarr 和 CookieCloud 的导入前门控。启动路径不再执行 PT 用户认证及认证失败通知，Scheduler 不再注册 `cookiecloud`、`user_auth`、`sitedata_refresh`，通用数据清理也不再删除历史 `siteuserdata`。模块诊断 API 现在只枚举实际发现的 Lite 模块：未配置消息渠道、未配置媒体服务器、PT、下载器、Redis、PostgreSQL、非目标媒体服务器和未知包不会为诊断接口临时实例化；路径、Token 校验、响应字段与保留模块测试语义不变。保留端点内部的其他历史业务耦合、剩余后台服务与任务、消息命令、依赖和前端页面仍须通过后续独立变更继续裁剪。
+能力配置版本 2 已在正常 FastAPI 初始化路径完成主 API、Radarr/Sonarr 和 CookieCloud 的导入前门控。启动路径不再执行 PT 用户认证、Agent、Workflow、Display、Redis、服务端统计预取、插件自动同步、缺失依赖安装或使用统计上报。Scheduler 固定保留 `scheduler_job`、`clear_cache`、条件 `mediaserver_sync`、条件 `data_cleanup`、条件 `full_gc` 和兼容插件任务；历史订阅、下载器、推荐、壁纸、市场刷新、Agent、Workflow 与统计配置不能恢复任务。内建命令固定为 `/mediaserver_sync`、`/clear_cache`、`/restart`、`/version`，插件命令仍可注册。模块诊断 API 只枚举实际发现的 Lite 模块；路径、Token 校验、响应字段与保留模块测试语义不变。依赖和前端页面仍须通过后续独立变更继续裁剪。
 
 插件动态 API 只有在插件本身通过兼容检查并成功加载后才可注册。
 
@@ -245,6 +245,8 @@ P115StrmHelper 文档声明包含可选 Sentry 分析组件。Lite 支持配置�
 - 保留消息渠道接收115分享链接并转存的入口。
 - PT搜索、下载、订阅和 Agent 命令不支持。
 - 已移除动作不得保留返回虚假成功的命令分支。
+
+普通消息（包括 115 分享链接）会保留 `text`、`userid`、`channel`、`source`、`chat_id` 和 `reply_to_message_id` 并广播 `UserMessage`，供手动安装且兼容的 P115StrmHelper 消费。插件输入、取消、超时和按钮回调继续使用官方 `MessageAction` 事件。Lite 核心不自动安装缺失插件；插件缺失时只能报告不可用，不能伪造转存成功。
 
 各消息渠道只有在对应官方模块、依赖和实际配置通过测试后，才可标记为支持。未配置渠道必须延迟加载。
 

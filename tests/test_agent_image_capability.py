@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app.agent import MoviePilotAgent
 from app.agent.llm import AgentCapabilityManager, LLMHelper
 from app.chain.message import MessageChain
@@ -45,6 +47,7 @@ def test_agent_capability_manager_delegates_image_support():
     supports.assert_called_once_with()
 
 
+@pytest.mark.skip(reason="Lite 固定移除 Agent 消息路由")
 def test_handle_ai_message_routes_text_only_model_images_to_files(monkeypatch):
     """纯文本模型收到图片消息时，应降级为文件附件而非 image_url 内容块。"""
     chain = MessageChain()

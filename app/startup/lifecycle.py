@@ -18,44 +18,33 @@ try:
 except Exception:
     pass
 
-from app.chain.system import SystemChain
 from app.core.config import global_vars, settings
-from app.helper.server import MoviePilotServerHelper
-from app.helper.system import SystemHelper
 from app.log import logger, LoggerManager
-from app.startup.command_initializer import init_command, stop_command, restart_command
+from app.startup.command_initializer import init_command, stop_command
 from app.startup.modules_initializer import init_modules, stop_modules
 from app.startup.monitor_initializer import stop_monitor, init_monitor
-from app.startup.plugins_initializer import init_plugins, stop_plugins, sync_plugins
+from app.startup.plugins_initializer import init_plugins, stop_plugins
 from app.startup.routers_initializer import init_routers
 from app.startup.scheduler_initializer import (
     stop_scheduler,
     init_scheduler,
-    init_plugin_scheduler,
 )
-from app.startup.workflow_initializer import init_workflow, stop_workflow
 from app.utils.http import aclose_shared_async_transports
 
 
 async def init_extra():
     """
-    同步插件及重启相关依赖服务
+    完成本地启动标记，不执行插件联网同步、依赖安装或统计上报。
     """
+    from app.chain.system import SystemChain
+    from app.helper.system import SystemHelper
+
     if settings.MOVIEPILOT_SAFE_MODE:
         SystemHelper().set_system_modified()
         SystemChain().restart_finish()
         return
-    if await sync_plugins():
-        # 重新注册插件定时服务
-        init_plugin_scheduler()
-        # 重新注册命令
-        restart_command()
-    # 设置系统已修改标志
     SystemHelper().set_system_modified()
-    # 重启完成
     SystemChain().restart_finish()
-    # 上报当前安装版本
-    await MoviePilotServerHelper.async_report_usage()
 
 
 async def run_shutdown_step(name: str, callback: Callable[[], object]) -> None:
@@ -74,54 +63,56 @@ async def lifespan(app: FastAPI):
     定义应用的生命周期事件
     """
     print("Starting up...")
-    # 存储当前循环
-    global_vars.set_loop(asyncio.get_event_loop())
-    # 初始化路由
-    init_routers(app)
-    # 初始化模块
-    init_modules()
-    if settings.MOVIEPILOT_SAFE_MODE:
-        print("MoviePilot safe mode enabled: skip plugins, scheduler, monitor, commands and workflow.")
-    else:
-        # 恢复插件备份
-        SystemChain().restore_plugins()
-        # 初始化插件
-        init_plugins()
-        # 初始化定时器
-        init_scheduler()
-        # 初始化监控器
-        init_monitor()
-        # 初始化命令
-        init_command()
-        # 初始化工作流
-        init_workflow()
-    # 插件同步到本地
-    sync_plugins_task = asyncio.create_task(init_extra())
+    started_owners = []
+    startup_completion_task = None
+    plugins_started = False
     try:
+        global_vars.set_loop(asyncio.get_event_loop())
+        init_routers(app)
+        init_modules()
+        started_owners.append(("模块服务", stop_modules))
+        if settings.MOVIEPILOT_SAFE_MODE:
+            print(
+                "MoviePilot safe mode enabled: "
+                "skip plugins, scheduler, monitor and commands."
+            )
+        else:
+            from app.chain.system import SystemChain
+
+            SystemChain().restore_plugins()
+            init_plugins()
+            plugins_started = True
+            started_owners.append(("插件", stop_plugins))
+            init_scheduler()
+            started_owners.append(("定时器", stop_scheduler))
+            init_monitor()
+            started_owners.append(("监控器", stop_monitor))
+            init_command()
+            started_owners.append(("命令服务", stop_command))
+        startup_completion_task = asyncio.create_task(init_extra())
         # 在此处 yield，表示应用已经启动，控制权交回 FastAPI 主事件循环
         yield
     finally:
         print("Shutting down...")
         global_vars.stop_system()
-        # 取消同步插件任务
+        # 取消尚未完成的本地启动收尾任务
+        if startup_completion_task:
+            try:
+                startup_completion_task.cancel()
+                await startup_completion_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                print(str(e))
         try:
-            sync_plugins_task.cancel()
-            await sync_plugins_task
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            print(str(e))
-        try:
-            if not settings.MOVIEPILOT_SAFE_MODE:
+            if plugins_started:
+                from app.chain.system import SystemChain
+
                 await run_shutdown_step(
                     "插件备份", lambda: SystemChain().backup_plugins()
                 )
-                await run_shutdown_step("工作流", stop_workflow)
-                await run_shutdown_step("命令服务", stop_command)
-                await run_shutdown_step("监控器", stop_monitor)
-                await run_shutdown_step("定时器", stop_scheduler)
-                await run_shutdown_step("插件", stop_plugins)
-            await run_shutdown_step("模块服务", stop_modules)
+            for owner_name, stop_owner in reversed(started_owners):
+                await run_shutdown_step(owner_name, stop_owner)
             await run_shutdown_step(
                 "共享异步 HTTP 连接池",
                 aclose_shared_async_transports,

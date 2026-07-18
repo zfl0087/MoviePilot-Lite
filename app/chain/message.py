@@ -11,17 +11,10 @@ from pathlib import Path
 from typing import Any, Optional, Dict, Union, List, Tuple
 from urllib.parse import unquote, urlparse
 
-from app.agent import ReplyMode, agent_manager
-from app.agent.llm import AgentCapabilityManager, LLMHelper
-from app.agent.prompt.transfer_redo import build_manual_redo_prompt
 from app.chain import ChainBase
-from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
-from app.chain.search import SearchChain
-from app.chain.site import SiteChain, site_interaction_manager
-from app.chain.skills import SkillsChain, skills_interaction_manager
-from app.chain.subscribe import SubscribeChain, subscribe_interaction_manager
 from app.chain.transfer import TransferChain
+from app.core.capability import Capability, is_capability_enabled
 from app.core.config import settings, global_vars
 from app.core.context import MediaInfo, Context
 from app.core.meta import MetaBase
@@ -33,6 +26,7 @@ from app.helper.interaction import (
     agent_interaction_manager,
     media_interaction_manager,
     plugin_input_interaction_manager,
+    skills_interaction_manager,
     PendingMediaInteraction,
 )
 from app.helper.torrent import TorrentHelper
@@ -43,6 +37,131 @@ from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import EventType, MessageChannel, MediaType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
+
+
+# 这些可选符号只为兼容直接调用的上游方法保留，正常 Lite 路由不会解析它们。
+AgentCapabilityManager = None
+DownloadChain = None
+LLMHelper = None
+ReplyMode = None
+SearchChain = None
+SiteChain = None
+SkillsChain = None
+SubscribeChain = None
+agent_manager = None
+build_manual_redo_prompt = None
+site_interaction_manager = None
+subscribe_interaction_manager = None
+
+
+def _get_agent_runtime():
+    """按需获取上游 Agent 运行对象"""
+    global ReplyMode, agent_manager
+    if agent_manager is None or ReplyMode is None:
+        from app.agent import ReplyMode as agent_reply_mode
+        from app.agent import agent_manager as runtime_manager
+
+        ReplyMode = agent_reply_mode
+        agent_manager = runtime_manager
+    return ReplyMode, agent_manager
+
+
+def _get_agent_capability_manager():
+    """按需获取上游 Agent 能力管理器"""
+    global AgentCapabilityManager
+    if AgentCapabilityManager is None:
+        from app.agent.llm import AgentCapabilityManager as capability_manager
+
+        AgentCapabilityManager = capability_manager
+    return AgentCapabilityManager
+
+
+def _get_llm_helper():
+    """按需获取上游 LLM Helper"""
+    global LLMHelper
+    if LLMHelper is None:
+        from app.agent.llm import LLMHelper as llm_helper
+
+        LLMHelper = llm_helper
+    return LLMHelper
+
+
+def _get_manual_redo_prompt_builder():
+    """按需获取上游手动重试提示构建器"""
+    global build_manual_redo_prompt
+    if build_manual_redo_prompt is None:
+        from app.agent.prompt.transfer_redo import (
+            build_manual_redo_prompt as prompt_builder,
+        )
+
+        build_manual_redo_prompt = prompt_builder
+    return build_manual_redo_prompt
+
+
+def _get_optional_chain(name: str):
+    """
+    按固定名称获取上游可选 Chain 类
+
+    :param name: 允许的可选 Chain 名称
+    :return: 对应 Chain 类
+    """
+    global DownloadChain, SearchChain, SiteChain, SkillsChain, SubscribeChain
+    if name == "download":
+        if DownloadChain is None:
+            from app.chain.download import DownloadChain as chain_class
+
+            DownloadChain = chain_class
+        return DownloadChain
+    if name == "search":
+        if SearchChain is None:
+            from app.chain.search import SearchChain as chain_class
+
+            SearchChain = chain_class
+        return SearchChain
+    if name == "site":
+        if SiteChain is None:
+            from app.chain.site import SiteChain as chain_class
+
+            SiteChain = chain_class
+        return SiteChain
+    if name == "skills":
+        if SkillsChain is None:
+            from app.chain.skills import SkillsChain as chain_class
+
+            SkillsChain = chain_class
+        return SkillsChain
+    if name == "subscribe":
+        if SubscribeChain is None:
+            from app.chain.subscribe import SubscribeChain as chain_class
+
+            SubscribeChain = chain_class
+        return SubscribeChain
+    raise ValueError(f"未知可选 Chain：{name}")
+
+
+def _get_optional_interaction_manager(name: str):
+    """
+    按需获取禁用能力的历史交互管理器
+
+    :param name: 允许的交互管理器名称
+    :return: 对应交互管理器
+    """
+    global site_interaction_manager, subscribe_interaction_manager
+    if name == "sites":
+        if site_interaction_manager is None:
+            from app.chain.site import site_interaction_manager as manager
+
+            site_interaction_manager = manager
+        return site_interaction_manager
+    if name == "subscribes":
+        if subscribe_interaction_manager is None:
+            from app.chain.subscribe import subscribe_interaction_manager as manager
+
+            subscribe_interaction_manager = manager
+        return subscribe_interaction_manager
+    if name == "skills":
+        return skills_interaction_manager
+    raise ValueError(f"未知交互管理器：{name}")
 
 
 class MessageChain(ChainBase):
@@ -62,11 +181,15 @@ class MessageChain(ChainBase):
         """
         异步调度 Agent 会话清理，避免同步消息链阻塞在模型资源释放上。
         """
-        if not session_id:
+        if not session_id or not is_capability_enabled(Capability.AGENT):
             return
+        _, runtime_manager = _get_agent_runtime()
         clear_task = None
         try:
-            clear_task = agent_manager.clear_session(session_id=session_id, user_id=str(userid))
+            clear_task = runtime_manager.clear_session(
+                session_id=session_id,
+                user_id=str(userid),
+            )
             asyncio.run_coroutine_threadsafe(
                 clear_task,
                 global_vars.loop,
@@ -183,8 +306,11 @@ class MessageChain(ChainBase):
         processing_finish_deferred = False
         try:
             # 语音输入只用于转写为文本，不默认改变回复形式。
-            has_audio_input = bool(audio_refs)
-            if audio_refs:
+            has_audio_input = bool(
+                audio_refs
+                and is_capability_enabled(Capability.VOICE_PROCESSING)
+            )
+            if has_audio_input:
                 transcript = self._transcribe_audio_refs(audio_refs, channel, source)
                 merged_parts = []
                 seen_parts = set()
@@ -223,12 +349,15 @@ class MessageChain(ChainBase):
             ):
                 return
 
-            is_agent_message = self._is_agent_message(
-                userid=userid,
-                text=text,
-                images=images,
-                files=files,
-                has_audio_input=has_audio_input,
+            is_agent_message = bool(
+                is_capability_enabled(Capability.AGENT)
+                and self._is_agent_message(
+                    userid=userid,
+                    text=text,
+                    images=images,
+                    files=files,
+                    has_audio_input=has_audio_input,
+                )
             )
 
             if not text.startswith("CALLBACK:") and not is_agent_message:
@@ -360,7 +489,11 @@ class MessageChain(ChainBase):
             )
             return bool(processing_status)
 
-        if not no_ai_requested and self._has_ai_prefix(text):
+        if (
+                is_capability_enabled(Capability.AGENT)
+                and not no_ai_requested
+                and self._has_ai_prefix(text)
+        ):
             return self._handle_ai_message(
                 text=text,
                 channel=channel,
@@ -375,8 +508,11 @@ class MessageChain(ChainBase):
             )
 
         latest_slash_interaction = self._get_latest_slash_interaction(userid)
-        if latest_slash_interaction == "sites":
-            if SiteChain().handle_text_interaction(
+        if (
+                is_capability_enabled(Capability.PT_SITES)
+                and latest_slash_interaction == "sites"
+        ):
+            if _get_optional_chain("site")().handle_text_interaction(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -385,8 +521,11 @@ class MessageChain(ChainBase):
             ):
                 return False
 
-        if latest_slash_interaction == "subscribes":
-            if SubscribeChain().handle_text_interaction(
+        if (
+                is_capability_enabled(Capability.SUBSCRIPTIONS)
+                and latest_slash_interaction == "subscribes"
+        ):
+            if _get_optional_chain("subscribe")().handle_text_interaction(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -395,8 +534,11 @@ class MessageChain(ChainBase):
             ):
                 return False
 
-        if latest_slash_interaction == "skills":
-            if SkillsChain().handle_text_interaction(
+        if (
+                is_capability_enabled(Capability.SKILLS)
+                and latest_slash_interaction == "skills"
+        ):
+            if _get_optional_chain("skills")().handle_text_interaction(
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -405,7 +547,10 @@ class MessageChain(ChainBase):
             ):
                 return False
 
-        if media_interaction_manager.get_by_user(userid):
+        if (
+                is_capability_enabled(Capability.CONTENT_DISCOVERY)
+                and media_interaction_manager.get_by_user(userid)
+        ):
             if MediaInteractionChain().handle_text_interaction(
                     channel=channel,
                     source=source,
@@ -418,7 +563,8 @@ class MessageChain(ChainBase):
         if (
                 not no_ai_requested
                 and
-                settings.AI_AGENT_ENABLE
+                is_capability_enabled(Capability.AGENT)
+                and settings.AI_AGENT_ENABLE
                 and (settings.AI_AGENT_GLOBAL or images or files or has_audio_input)
         ):
             return self._handle_ai_message(
@@ -434,12 +580,15 @@ class MessageChain(ChainBase):
                 has_audio_input=has_audio_input,
             )
 
-        if MediaInteractionChain().handle_text_interaction(
+        if (
+                is_capability_enabled(Capability.CONTENT_DISCOVERY)
+                and MediaInteractionChain().handle_text_interaction(
                 channel=channel,
                 source=source,
                 userid=userid,
                 username=username,
                 text=text,
+                )
         ):
             return False
 
@@ -702,7 +851,9 @@ class MessageChain(ChainBase):
         ):
             return False
 
-        if SkillsChain().handle_callback_interaction(
+        if (
+                is_capability_enabled(Capability.SKILLS)
+                and _get_optional_chain("skills")().handle_callback_interaction(
                 callback_data=callback_data,
                 channel=channel,
                 source=source,
@@ -710,10 +861,13 @@ class MessageChain(ChainBase):
                 username=username,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
+                )
         ):
             return False
 
-        if SiteChain().handle_callback_interaction(
+        if (
+                is_capability_enabled(Capability.PT_SITES)
+                and _get_optional_chain("site")().handle_callback_interaction(
                 callback_data=callback_data,
                 channel=channel,
                 source=source,
@@ -721,10 +875,13 @@ class MessageChain(ChainBase):
                 username=username,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
+                )
         ):
             return False
 
-        if SubscribeChain().handle_callback_interaction(
+        if (
+                is_capability_enabled(Capability.SUBSCRIPTIONS)
+                and _get_optional_chain("subscribe")().handle_callback_interaction(
                 callback_data=callback_data,
                 channel=channel,
                 source=source,
@@ -732,10 +889,13 @@ class MessageChain(ChainBase):
                 username=username,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
+                )
         ):
             return False
 
-        if MediaInteractionChain().handle_callback_interaction(
+        if (
+                is_capability_enabled(Capability.CONTENT_DISCOVERY)
+                and MediaInteractionChain().handle_callback_interaction(
                 callback_data=callback_data,
                 channel=channel,
                 source=source,
@@ -743,10 +903,13 @@ class MessageChain(ChainBase):
                 username=username,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
+                )
         ):
             return False
 
-        if self._handle_agent_choice_callback(
+        if (
+                is_capability_enabled(Capability.AGENT)
+                and self._handle_agent_choice_callback(
                 callback_data=callback_data,
                 channel=channel,
                 source=source,
@@ -754,6 +917,7 @@ class MessageChain(ChainBase):
                 username=username,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
+                )
         ):
             return True
 
@@ -795,11 +959,15 @@ class MessageChain(ChainBase):
         返回当前用户最近一次激活的 slash 交互类型。
         """
         candidates = []
-        for name, manager in (
-                ("sites", site_interaction_manager),
-                ("subscribes", subscribe_interaction_manager),
-                ("skills", skills_interaction_manager),
-        ):
+        enabled_interactions = (
+            ("sites", Capability.PT_SITES),
+            ("subscribes", Capability.SUBSCRIPTIONS),
+            ("skills", Capability.SKILLS),
+        )
+        for name, capability in enabled_interactions:
+            if not is_capability_enabled(capability):
+                continue
+            manager = _get_optional_interaction_manager(name)
             request = manager.get_by_user(userid)
             if request:
                 candidates.append((request.created_at, name))
@@ -848,7 +1016,7 @@ class MessageChain(ChainBase):
                 userid=userid,
                 username=username,
             )
-        else:
+        elif is_capability_enabled(Capability.AGENT):
             self._take_over_transfer_history_by_ai(
                 history_id=history_id,
                 channel=channel,
@@ -1030,7 +1198,10 @@ class MessageChain(ChainBase):
         由智能助手接管一条失败的整理记录。
         """
 
-        if not settings.AI_AGENT_ENABLE:
+        if (
+                not is_capability_enabled(Capability.AGENT)
+                or not settings.AI_AGENT_ENABLE
+        ):
             self.post_message(
                 Notification(
                     channel=channel,
@@ -1059,7 +1230,9 @@ class MessageChain(ChainBase):
             )
             return
 
-        redo_prompt = build_manual_redo_prompt(history)
+        prompt_builder = _get_manual_redo_prompt_builder()
+        reply_mode, runtime_manager = _get_agent_runtime()
+        redo_prompt = prompt_builder(history)
 
         self.post_message(
             Notification(
@@ -1082,11 +1255,11 @@ class MessageChain(ChainBase):
                 final_output = text_output or ""
 
             try:
-                await agent_manager.run_background_prompt(
+                await runtime_manager.run_background_prompt(
                     message=redo_prompt,
                     session_prefix=f"__agent_manual_redo_{history_id}",
                     output_callback=_capture_output,
-                    reply_mode=ReplyMode.CAPTURE_ONLY,
+                    reply_mode=reply_mode.CAPTURE_ONLY,
                     allow_message_tools=False,
                 )
                 await self.async_post_message(
@@ -1225,7 +1398,7 @@ class MessageChain(ChainBase):
         if session_id:
             clear_task = None
             try:
-                clear_task = agent_manager.clear_session(
+                clear_task = _get_agent_runtime()[1].clear_session(
                     session_id=session_id, user_id=str(userid)
                 )
                 asyncio.run_coroutine_threadsafe(
@@ -1274,7 +1447,7 @@ class MessageChain(ChainBase):
             session_id, _ = session_info
             try:
                 future = asyncio.run_coroutine_threadsafe(
-                    agent_manager.stop_current_task(session_id=session_id),
+                    _get_agent_runtime()[1].stop_current_task(session_id=session_id),
                     global_vars.loop,
                 )
                 stopped = future.result(timeout=10)
@@ -1371,7 +1544,7 @@ class MessageChain(ChainBase):
             return
 
         session_id, _ = session_info
-        status = agent_manager.get_session_status(session_id=session_id)
+        status = _get_agent_runtime()[1].get_session_status(session_id=session_id)
         self.post_message(
             Notification(
                 channel=channel,
@@ -1402,7 +1575,10 @@ class MessageChain(ChainBase):
         """
         try:
             # 检查AI智能体是否启用
-            if not settings.AI_AGENT_ENABLE:
+            if (
+                    not is_capability_enabled(Capability.AGENT)
+                    or not settings.AI_AGENT_ENABLE
+            ):
                 self.post_message(
                     Notification(
                         channel=channel,
@@ -1444,7 +1620,7 @@ class MessageChain(ChainBase):
             # 将可直接输入给 LLM 的附件统一转换为 data URL
             original_images = images
             all_files = list(files or [])
-            if images and LLMHelper.supports_image_input(
+            if images and _get_llm_helper().supports_image_input(
                     provider=settings.LLM_PROVIDER,
                     model=settings.LLM_MODEL,
             ):
@@ -1522,7 +1698,7 @@ class MessageChain(ChainBase):
                 process_kwargs["has_audio_input"] = True
             # 在事件循环中处理
             asyncio.run_coroutine_threadsafe(
-                agent_manager.process_message(**process_kwargs),
+                _get_agent_runtime()[1].process_message(**process_kwargs),
                 global_vars.loop,
             )
             return True
@@ -1542,7 +1718,8 @@ class MessageChain(ChainBase):
         """
         if not audio_refs:
             return None
-        if not AgentCapabilityManager.is_audio_input_available():
+        capability_manager = _get_agent_capability_manager()
+        if not capability_manager.is_audio_input_available():
             logger.warning("音频输入能力未配置或未启用，跳过语音识别")
             return None
 
@@ -1649,7 +1826,7 @@ class MessageChain(ChainBase):
                     )
                     continue
 
-                transcript = AgentCapabilityManager.transcribe_audio(
+                transcript = capability_manager.transcribe_audio(
                     content=content, filename=filename
                 )
                 if transcript:
@@ -2543,7 +2720,7 @@ class MediaInteractionChain(ChainBase):
         """
         根据已选媒体搜索资源，并切换到资源选择阶段。
         """
-        exist_flag, no_exists = DownloadChain().get_no_exists_info(
+        exist_flag, no_exists = _get_optional_chain("download")().get_no_exists_info(
             meta=request.meta,
             mediainfo=mediainfo,
         )
@@ -2591,7 +2768,9 @@ class MediaInteractionChain(ChainBase):
             )
         )
 
-        contexts = SearchChain().process(mediainfo=mediainfo, no_exists=no_exists)
+        contexts = _get_optional_chain("search")().process(
+            mediainfo=mediainfo, no_exists=no_exists
+        )
         if not contexts:
             self.post_message(
                 Notification(
@@ -2662,7 +2841,7 @@ class MediaInteractionChain(ChainBase):
         """
         best_version = request.action == "ReSubscribe"
         if not best_version:
-            exist_flag, _ = DownloadChain().get_no_exists_info(
+            exist_flag, _ = _get_optional_chain("download")().get_no_exists_info(
                 meta=request.meta,
                 mediainfo=mediainfo,
             )
@@ -2684,7 +2863,7 @@ class MediaInteractionChain(ChainBase):
             if channel
             else None
         )
-        SubscribeChain().add(
+        _get_optional_chain("subscribe")().add(
             title=mediainfo.title,
             year=mediainfo.year,
             mtype=mediainfo.type,
@@ -2764,7 +2943,7 @@ class MediaInteractionChain(ChainBase):
                 context=context,
         ):
             return
-        DownloadChain().download_single(
+        _get_optional_chain("download")().download_single(
             context,
             channel=channel,
             source=source,
@@ -2895,7 +3074,7 @@ class MediaInteractionChain(ChainBase):
         if download_mode == "single" and request.pending_download_context:
             context = request.pending_download_context
             self._restore_torrent_phase(request)
-            DownloadChain().download_single(
+            _get_optional_chain("download")().download_single(
                 context,
                 channel=channel,
                 source=source,
@@ -2957,7 +3136,7 @@ class MediaInteractionChain(ChainBase):
         """
         自动择优下载当前资源列表，并在未完成时补建订阅。
         """
-        downloadchain = DownloadChain()
+        downloadchain = _get_optional_chain("download")()
         if no_exists is None:
             exist_flag, no_exists = downloadchain.get_no_exists_info(
                 meta=request.meta,
@@ -2994,7 +3173,7 @@ class MediaInteractionChain(ChainBase):
             if channel
             else None
         )
-        SubscribeChain().add(
+        _get_optional_chain("subscribe")().add(
             title=request.current_media.title,
             year=request.current_media.year,
             mtype=request.current_media.type,

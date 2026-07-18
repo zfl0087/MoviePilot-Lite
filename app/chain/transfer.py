@@ -9,12 +9,11 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union, Dict, Callable, Any
 
 from app import schemas
-from app.agent import ReplyMode, prompt_manager, agent_manager
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
-from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
+from app.core.capability import Capability, is_capability_enabled
 from app.core.config import settings, global_vars
 from app.core.context import MediaInfo
 from app.core.event import eventmanager
@@ -672,104 +671,26 @@ class JobManager:
 
 class FailedRetryScheduler:
     """
-    负责失败整理记录的 debounce 聚合与 AI 重试调度。
+    兼容历史调用的失败整理重试入口
+
+    Lite 固定禁用 Agent，失败记录仍可通过整理历史手动重试，
+    但不会创建 Agent 定时器或后台会话。
     """
 
-    RETRY_TRANSFER_DEBOUNCE_SECONDS = 300
+    async def close(self) -> None:
+        """关闭兼容入口，Lite 不持有 Agent 重试资源"""
 
-    def __init__(self):
-        super().__init__()
-        self._retry_transfer_buffer: dict[str, list[int]] = {}
-        self._retry_transfer_timers: dict[str, asyncio.TimerHandle] = {}
-        self._retry_transfer_lock = asyncio.Lock()
+    async def schedule_retry(self, history_id: int, group_key: str = "") -> None:
+        """
+        保留调用契约但不调度 Agent 重试
 
-    async def close(self):
-        async with self._retry_transfer_lock:
-            timers = list(self._retry_transfer_timers.values())
-            self._retry_transfer_timers.clear()
-            self._retry_transfer_buffer.clear()
-
-        for timer in timers:
-            timer.cancel()
-
-    @staticmethod
-    def _build_retry_transfer_template_context(
-            history_ids: list[int],
-    ) -> tuple[str, dict[str, int | str]]:
-        """仅负责把失败重试任务的动态数据映射成模板变量。"""
-        is_batch = len(history_ids) > 1
-        task_type = "batch_transfer_failed_retry" if is_batch else "transfer_failed_retry"
-        template_context: dict[str, int | str] = {
-            "history_ids_csv": ", ".join(str(item) for item in history_ids),
-            "history_count": len(history_ids),
-        }
-        if not is_batch:
-            template_context["history_id"] = history_ids[0]
-        return task_type, template_context
-
-    def _build_retry_transfer_prompt(self, history_ids: list[int]) -> str:
-        """根据失败记录数量构建统一的重试整理后台任务提示词。"""
-        task_type, template_context = self._build_retry_transfer_template_context(history_ids)
-        return prompt_manager.render_system_task_message(
-            task_type,
-            template_context=template_context,
+        :param history_id: 整理历史 ID
+        :param group_key: 历史聚合分组键
+        """
+        logger.debug(
+            f"Lite 已禁用 Agent 自动重试整理：history_id={history_id}, "
+            f"group={group_key or '-'}"
         )
-
-    async def schedule_retry(self, history_id: int, group_key: str = ""):
-        """
-        同一 group_key 的失败记录会在缓冲期内合并为一次 agent 调用。
-        """
-        if not group_key:
-            group_key = f"_default_{history_id}"
-
-        async with self._retry_transfer_lock:
-            if group_key not in self._retry_transfer_buffer:
-                self._retry_transfer_buffer[group_key] = []
-            if history_id not in self._retry_transfer_buffer[group_key]:
-                self._retry_transfer_buffer[group_key].append(history_id)
-                logger.info(
-                    f"智能体重试整理：记录 ID={history_id} 已加入缓冲区 "
-                    f"(group={group_key}, 当前{len(self._retry_transfer_buffer[group_key])}条)"
-                )
-
-            if group_key in self._retry_transfer_timers:
-                self._retry_transfer_timers[group_key].cancel()
-
-            loop = asyncio.get_running_loop()
-            self._retry_transfer_timers[group_key] = loop.call_later(
-                self.RETRY_TRANSFER_DEBOUNCE_SECONDS,
-                lambda gk=group_key: asyncio.create_task(self._flush_retry_transfer(gk)),
-            )
-
-    async def _flush_retry_transfer(self, group_key: str):
-        """
-        延迟定时器到期后，取出该分组的所有 history_id 并合并为一次 agent 调用。
-        """
-        async with self._retry_transfer_lock:
-            history_ids = self._retry_transfer_buffer.pop(group_key, [])
-            self._retry_transfer_timers.pop(group_key, None)
-
-        if not history_ids:
-            return
-
-        ids_str = ", ".join(str(item) for item in history_ids)
-        logger.info(
-            f"智能体重试整理：开始批量处理失败记录 IDs=[{ids_str}] (group={group_key})"
-        )
-
-        try:
-            await agent_manager.run_background_prompt(
-                message=self._build_retry_transfer_prompt(history_ids),
-                session_prefix="__agent_retry_transfer_batch",
-                reply_mode=ReplyMode.DISPATCH,
-            )
-            logger.info(
-                f"智能体重试整理：批量处理完成 IDs=[{ids_str}] (group={group_key})"
-            )
-        except Exception as err:
-            logger.error(
-                f"智能体重试整理失败 (IDs=[{ids_str}], group={group_key}): {err}"
-            )
 
 
 class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
@@ -1044,6 +965,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             # AI智能体自动重试整理
             if (
                     history
+                    and is_capability_enabled(Capability.AGENT)
                     and settings.AI_AGENT_ENABLE
                     and settings.AI_AGENT_RETRY_TRANSFER
             ):
@@ -1652,6 +1574,7 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     # AI智能体自动重试整理
                     if (
                             his
+                            and is_capability_enabled(Capability.AGENT)
                             and settings.AI_AGENT_ENABLE
                             and settings.AI_AGENT_RETRY_TRANSFER
                     ):
@@ -2526,9 +2449,14 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         # 下载时保存的完整订阅识别词快照优先
         if history_record.custom_words:
             return history_record.custom_words.split("\n")
-        # 兜底：历史旧记录无快照时，按下载来源实时反查订阅
+        # Lite 不为历史下载记录恢复订阅链；官方配置回退后仍可继续使用原数据。
+        if not is_capability_enabled(Capability.SUBSCRIPTIONS):
+            return None
+        # 上游完整配置下兜底：历史旧记录无快照时按下载来源实时反查订阅。
         if not isinstance(history_record.note, dict):
             return None
+        from app.chain.subscribe import SubscribeChain
+
         subscribe = SubscribeChain().get_subscribe_by_source(
             history_record.note.get("source")
         )
@@ -3363,10 +3291,6 @@ class TransferChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return [
             [
                 {"text": "重试", "callback_data": f"transfer_retry_{history_id}"},
-                {
-                    "text": "智能助手接管",
-                    "callback_data": f"transfer_ai_retry_{history_id}",
-                },
             ]
         ]
 

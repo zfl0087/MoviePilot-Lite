@@ -13,15 +13,14 @@ import aiofiles
 import anyio
 import pillow_avif  # noqa 用于自动注册AVIF支持
 from anyio import Path as AsyncPath
-from app.helper.sites import SitesHelper  # noqa  # noqa
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app import schemas
 from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
-from app.chain.search import SearchChain
 from app.chain.system import SystemChain
+from app.core.capability import Capability, is_capability_enabled
 from app.core.config import global_vars, settings
 from app.core.event import eventmanager
 from app.core.metainfo import MetaInfo
@@ -727,8 +726,8 @@ async def get_env_setting(
     info.update(
         {
             "VERSION": APP_VERSION,
-            "AUTH_VERSION": SitesHelper().auth_version,
-            "INDEXER_VERSION": SitesHelper().indexer_version,
+            "AUTH_VERSION": None,
+            "INDEXER_VERSION": None,
             "FRONTEND_VERSION": SystemChain().get_frontend_version(),
             "RUST_ACCEL_AVAILABLE": rust_accel.is_available(),
             "RUST_ACCEL_ENABLED": rust_accel.is_enabled(),
@@ -1123,6 +1122,9 @@ def ruletest(
     """
     过滤规则测试，规则类型 1-订阅，2-洗版，3-搜索
     """
+    if not is_capability_enabled(Capability.TORRENT_SEARCH):
+        return schemas.Response(success=False, message="Lite 不支持资源过滤测试！")
+
     metainfo = MetaInfo(title=title, subtitle=subtitle)
     torrent = schemas.TorrentInfo(
         title=title,
@@ -1162,6 +1164,8 @@ def ruletest(
         )
 
     # 过滤
+    from app.chain.search import SearchChain
+
     result = SearchChain().filter_torrents(
         rule_groups=[rulegroup.name], torrent_list=[torrent], mediainfo=media_info
     )
@@ -1368,11 +1372,11 @@ def run_scheduler(jobid: str, _: User = Depends(get_current_active_superuser)):
     """
     if not jobid:
         return schemas.Response(success=False, message="命令不能为空！")
-    if jobid in {"recommend_refresh", "cookiecloud"}:
-        Scheduler().start(jobid, manual=True)
-    else:
-        Scheduler().start(jobid)
-    return schemas.Response(success=True)
+    success = Scheduler().start(jobid)
+    return schemas.Response(
+        success=success,
+        message=None if success else "服务不存在、已禁用、正在运行或执行失败！",
+    )
 
 
 @router.get(
@@ -1385,8 +1389,8 @@ def run_scheduler2(jobid: str, _: Annotated[str, Depends(verify_apitoken)]):
     if not jobid:
         return schemas.Response(success=False, message="命令不能为空！")
 
-    if jobid in {"recommend_refresh", "cookiecloud"}:
-        Scheduler().start(jobid, manual=True)
-    else:
-        Scheduler().start(jobid)
-    return schemas.Response(success=True)
+    success = Scheduler().start(jobid)
+    return schemas.Response(
+        success=success,
+        message=None if success else "服务不存在、已禁用、正在运行或执行失败！",
+    )

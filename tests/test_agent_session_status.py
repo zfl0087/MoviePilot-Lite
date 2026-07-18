@@ -60,6 +60,7 @@ class TestAgentSessionStatus(unittest.TestCase):
         self.assertEqual(snapshots[0]["total_tokens"], 1500)
         self.assertAlmostEqual(snapshots[0]["context_usage_ratio"], 1200 / 128000)
 
+    @unittest.skip("Lite 不注册 Agent 会话命令")
     def test_remote_session_status_sends_usage_summary(self):
         chain = MessageChain()
         chain._user_sessions["10001"] = ("session-1", datetime.now())

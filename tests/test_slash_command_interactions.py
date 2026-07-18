@@ -32,6 +32,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
         site_interaction_manager.clear()
         subscribe_interaction_manager.clear()
 
+    @unittest.skip("Lite 固定移除 PT 站点消息路由")
     def test_message_routes_text_reply_to_latest_sites_interaction(self):
         chain = MessageChain()
         skills_interaction_manager.create_or_replace(
@@ -65,6 +66,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
         handle_site.assert_called_once()
         handle_skills.assert_not_called()
 
+    @unittest.skip("Lite 固定移除订阅消息路由")
     def test_message_routes_text_reply_to_latest_subscribes_interaction(self):
         chain = MessageChain()
         site_interaction_manager.create_or_replace(
@@ -99,6 +101,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
         handle_subscribes.assert_called_once()
         handle_sites.assert_not_called()
 
+    @unittest.skip("Lite 固定移除 PT 站点回调路由")
     def test_callback_routes_to_sites_chain(self):
         chain = MessageChain()
         request = site_interaction_manager.create_or_replace(
@@ -123,6 +126,7 @@ class TestSlashCommandInteractions(unittest.TestCase):
 
         handle_callback.assert_called_once()
 
+    @unittest.skip("Lite 固定移除订阅回调路由")
     def test_callback_routes_to_subscribes_chain(self):
         chain = MessageChain()
         request = subscribe_interaction_manager.create_or_replace(

@@ -66,6 +66,7 @@ class TestSkillsCommand(unittest.TestCase):
     def tearDown(self):
         skills_interaction_manager.clear()
 
+    @unittest.skip("Lite 固定移除 Skills 消息路由")
     def test_message_routes_text_reply_to_skills_interaction_before_ai(self):
         chain = MessageChain()
         skills_interaction_manager.create_or_replace(
@@ -114,6 +115,7 @@ class TestSkillsCommand(unittest.TestCase):
         self.assertFalse(notification.save_history)
         self.assertIsNone(skills_interaction_manager.get_by_user("10001"))
 
+    @unittest.skip("Lite 固定移除 Skills 回调路由")
     def test_callback_routes_to_skills_chain(self):
         chain = MessageChain()
         request = skills_interaction_manager.create_or_replace(

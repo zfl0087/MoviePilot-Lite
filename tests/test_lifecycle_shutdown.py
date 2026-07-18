@@ -19,6 +19,8 @@ def _assert_completed_once(mock: MagicMock) -> None:
 
 def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
     """隔离 lifespan 的外部依赖，并按名称注入一个关闭失败"""
+    from app.chain import system as system_module
+
     monkeypatch.setattr(lifecycle.settings, "MOVIEPILOT_SAFE_MODE", False)
     monkeypatch.setattr(lifecycle.global_vars, "set_loop", MagicMock())
     monkeypatch.setattr(lifecycle.global_vars, "stop_system", MagicMock())
@@ -30,17 +32,17 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "init_scheduler",
         "init_monitor",
         "init_command",
-        "init_workflow",
     ):
         monkeypatch.setattr(lifecycle, name, MagicMock())
 
     system_chain = MagicMock()
-    monkeypatch.setattr(lifecycle, "SystemChain", MagicMock(return_value=system_chain))
+    monkeypatch.setattr(
+        system_module, "SystemChain", MagicMock(return_value=system_chain)
+    )
     monkeypatch.setattr(lifecycle, "init_extra", AsyncMock())
 
     shutdown_steps = {
         "backup_plugins": system_chain.backup_plugins,
-        "stop_workflow": MagicMock(),
         "stop_command": MagicMock(),
         "stop_monitor": MagicMock(),
         "stop_scheduler": MagicMock(),
@@ -49,7 +51,6 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "close_http": AsyncMock(),
     }
     for name in (
-        "stop_workflow",
         "stop_command",
         "stop_monitor",
         "stop_scheduler",
@@ -78,7 +79,6 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
     "failing_step",
     [
         "backup_plugins",
-        "stop_workflow",
         "stop_command",
         "stop_monitor",
         "stop_scheduler",
@@ -103,6 +103,59 @@ def test_lifespan_continues_after_each_shutdown_owner_failure(
     lifecycle.global_vars.stop_system.assert_called_once_with()
     for step in shutdown_steps.values():
         _assert_completed_once(step)
+
+
+def test_safe_mode_skips_optional_runtime_owners(monkeypatch):
+    """安全模式只启动路由和基础模块，不启动插件、调度、监控或命令。"""
+    monkeypatch.setattr(lifecycle.settings, "MOVIEPILOT_SAFE_MODE", True)
+    monkeypatch.setattr(lifecycle.global_vars, "set_loop", MagicMock())
+    monkeypatch.setattr(lifecycle.global_vars, "stop_system", MagicMock())
+    monkeypatch.setattr(lifecycle, "init_routers", MagicMock())
+    monkeypatch.setattr(lifecycle, "init_modules", MagicMock())
+    optional_starts = []
+    for name in ("init_plugins", "init_scheduler", "init_monitor", "init_command"):
+        owner = MagicMock()
+        monkeypatch.setattr(lifecycle, name, owner)
+        optional_starts.append(owner)
+    monkeypatch.setattr(lifecycle, "init_extra", AsyncMock())
+    stop_modules = AsyncMock()
+    close_http = AsyncMock()
+    monkeypatch.setattr(lifecycle, "stop_modules", stop_modules)
+    monkeypatch.setattr(lifecycle, "aclose_shared_async_transports", close_http)
+    monkeypatch.setattr(lifecycle.LoggerManager, "shutdown", MagicMock())
+
+    async def run_lifespan():
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    for owner in optional_starts:
+        owner.assert_not_called()
+    stop_modules.assert_awaited_once_with()
+    close_http.assert_awaited_once_with()
+
+
+def test_startup_failure_closes_only_successfully_started_owners(monkeypatch):
+    """中途初始化失败时按逆序关闭已经成功启动的 owner。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    lifecycle.init_monitor.side_effect = RuntimeError("monitor init failed")
+
+    async def run_lifespan():
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    with pytest.raises(RuntimeError, match="monitor init failed"):
+        asyncio.run(run_lifespan())
+
+    shutdown_steps["backup_plugins"].assert_called_once_with()
+    shutdown_steps["stop_scheduler"].assert_called_once_with()
+    shutdown_steps["stop_plugins"].assert_called_once_with()
+    shutdown_steps["stop_modules"].assert_awaited_once_with()
+    shutdown_steps["close_http"].assert_awaited_once_with()
+    shutdown_steps["logger"].assert_called_once_with()
+    shutdown_steps["stop_monitor"].assert_not_called()
+    shutdown_steps["stop_command"].assert_not_called()
 
 
 def test_uvicorn_signal_publishes_stop_before_server_exit(monkeypatch):
@@ -224,28 +277,25 @@ def test_command_restart_failure_does_not_publish_stop_request(monkeypatch):
 
 def test_stop_modules_continues_after_internal_owner_failures(monkeypatch):
     """模块关闭编排中的多个失败不能阻断其余清理"""
-    stop_agent = AsyncMock(side_effect=RuntimeError("agent failed"))
-    monkeypatch.setattr(modules_initializer, "stop_agent", stop_agent)
     dependencies = _patch_module_shutdown_dependencies(monkeypatch)
     dependencies["module"].side_effect = RuntimeError("module failed")
 
     asyncio.run(modules_initializer.stop_modules())
 
-    stop_agent.assert_awaited_once_with()
     for dependency in dependencies.values():
         _assert_completed_once(dependency)
 
 
 def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     """替换 stop_modules 的资源所有者，避免测试启动真实后台服务"""
+    from app.helper import doh as doh_module
+
+    monkeypatch.setattr(modules_initializer.settings, "DOH_ENABLE", True)
     dependencies = {}
     for name, method_name in (
         ("ModuleManager", "stop"),
         ("EventManager", "stop"),
-        ("DisplayHelper", "stop"),
-        ("DohHelper", "shutdown"),
         ("ThreadHelper", "shutdown"),
-        ("RedisHelper", "close"),
     ):
         instance = MagicMock()
         setattr(instance, method_name, MagicMock())
@@ -257,19 +307,16 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
         key = name.removesuffix("Helper").removesuffix("Manager").lower()
         dependencies[key] = getattr(instance, method_name)
 
+    doh = MagicMock()
+    doh.shutdown = MagicMock()
+    monkeypatch.setattr(doh_module, "DohHelper", MagicMock(return_value=doh))
+    dependencies["doh"] = doh.shutdown
+
     for name in ("stop_message", "stop_frontend", "clear_temp"):
         dependency = MagicMock()
         monkeypatch.setattr(modules_initializer, name, dependency)
         dependencies[name] = dependency
 
-    async_redis = MagicMock()
-    async_redis.close = AsyncMock()
-    monkeypatch.setattr(
-        modules_initializer,
-        "AsyncRedisHelper",
-        MagicMock(return_value=async_redis),
-    )
-    dependencies["async_redis"] = async_redis.close
     close_database = AsyncMock()
     monkeypatch.setattr(modules_initializer, "close_database", close_database)
     dependencies["close_database"] = close_database

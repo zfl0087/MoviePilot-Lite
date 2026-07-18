@@ -13,16 +13,10 @@ import pytz
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 
 from app import schemas
 from app.chain import ChainBase
-from app.chain.mediaserver import MediaServerChain
-from app.chain.recommend import RecommendChain
-from app.chain.subscribe import SubscribeChain
-from app.chain.transfer import TransferChain
-from app.chain.workflow import WorkflowChain
 from app.core.config import settings, global_vars
 from app.core.event import Event, eventmanager
 from app.core.plugin import PluginManager
@@ -30,12 +24,9 @@ from app.db import SessionFactory
 from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
 from app.db.models.message import Message
 from app.db.models.transferhistory import TransferHistory
-from app.helper.image import WallpaperHelper
 from app.helper.message import MessageHelper
 from app.helper.progress import ProgressHelper
-from app.helper.server import MoviePilotServerHelper
 from app.log import logger
-from app.schemas import Workflow
 from app.schemas.types import EventType
 from app.utils.gc import get_memory_usage
 from app.utils.mixins import ConfigReloadMixin
@@ -257,17 +248,11 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
     CONFIG_WATCH = {
         "DEV",
         "MEDIASERVER_SYNC_INTERVAL",
-        "SUBSCRIBE_SEARCH",
-        "SUBSCRIBE_SEARCH_INTERVAL",
-        "SUBSCRIBE_MODE",
-        "SUBSCRIBE_RSS_INTERVAL",
-        "AI_AGENT_ENABLE",
-        "AI_AGENT_JOB_INTERVAL",
         "DATA_CLEANUP_ENABLE",
         "DATA_CLEANUP_MESSAGE_DAYS",
         "DATA_CLEANUP_DOWNLOAD_HISTORY_DAYS",
         "DATA_CLEANUP_TRANSFER_HISTORY_DAYS",
-        "USAGE_STATISTIC_SHARE",
+        "MEMORY_GC_INTERVAL",
     }
 
     def __init__(self):
@@ -312,62 +297,15 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         初始化定时服务
         """
-
-        # 停止定时服务
         self.stop()
-
-        # 调试模式不启动定时服务
         if settings.DEV:
             return
 
         with lock:
-            # 各服务的运行状态
             self._jobs = {
-                "mediaserver_sync": {
-                    "name": "同步媒体服务器",
-                    "func": MediaServerChain().sync,
-                    "running": False,
-                },
-                "subscribe_tmdb": {
-                    "name": "订阅元数据更新",
-                    "func": SubscribeChain().check,
-                    "running": False,
-                },
-                "subscribe_search": {
-                    "name": "订阅搜索补全",
-                    "func": SubscribeChain().search,
-                    "running": False,
-                    "kwargs": {"state": "R"},
-                },
-                "new_subscribe_search": {
-                    "name": "新增订阅搜索",
-                    "func": SubscribeChain().search,
-                    "running": False,
-                    "kwargs": {"state": "N"},
-                },
-                "subscribe_refresh": {
-                    "name": "订阅刷新",
-                    "func": SubscribeChain().refresh,
-                    "running": False,
-                },
-                "subscribe_follow": {
-                    "name": "关注的订阅分享",
-                    "func": SubscribeChain().follow,
-                    "running": False,
-                },
-                "transfer": {
-                    "name": "下载文件整理",
-                    "func": TransferChain().process,
-                    "running": False,
-                },
                 "clear_cache": {
                     "name": "缓存清理",
                     "func": self.clear_cache,
-                    "running": False,
-                },
-                "data_cleanup": {
-                    "name": "数据表清理",
-                    "func": SchedulerChain().cleanup,
                     "running": False,
                 },
                 "scheduler_job": {
@@ -375,55 +313,23 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     "func": SchedulerChain().scheduler_job,
                     "running": False,
                 },
-                "random_wallpager": {
-                    "name": "壁纸缓存",
-                    "func": WallpaperHelper().get_wallpapers,
-                    "running": False,
-                },
-                "recommend_refresh": {
-                    "name": "推荐缓存",
-                    "func": RecommendChain().refresh_recommend,
-                    "running": False,
-                },
-                "plugin_market_refresh": {
-                    "name": "插件市场缓存",
-                    "func": PluginManager().async_get_online_plugins,
-                    "running": False,
-                    "kwargs": {"force": True},
-                },
-                "subscribe_calendar_cache": {
-                    "name": "订阅日历缓存",
-                    "func": SubscribeChain().cache_calendar,
-                    "running": False,
-                },
-                "full_gc": {
-                    "name": "主动内存回收",
-                    "func": self.full_gc,
-                    "running": False,
-                },
-                "agent_heartbeat": {
-                    "name": "智能体定时任务",
-                    "func": self.agent_heartbeat,
-                    "running": False,
-                },
-                "usage_report": {
-                    "name": "安装版本统计上报",
-                    "func": MoviePilotServerHelper.report_usage,
-                    "running": False,
-                },
             }
 
-            # 创建定时服务
             self._scheduler = BackgroundScheduler(
                 timezone=settings.TZ,
                 executors={"default": ThreadPoolExecutor(settings.CONF.scheduler)},
             )
 
-            # 媒体服务器同步
             if (
                     settings.MEDIASERVER_SYNC_INTERVAL
                     and str(settings.MEDIASERVER_SYNC_INTERVAL).isdigit()
+                    and self._has_enabled_mediaserver()
             ):
+                self._jobs["mediaserver_sync"] = {
+                    "name": "同步媒体服务器",
+                    "func": self._sync_mediaservers,
+                    "running": False,
+                }
                 self._scheduler.add_job(
                     self.start,
                     "interval",
@@ -434,100 +340,6 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     kwargs={"job_id": "mediaserver_sync"},
                 )
 
-            # 新增订阅时搜索（5分钟检查一次）
-            self._scheduler.add_job(
-                self.start,
-                "interval",
-                id="new_subscribe_search",
-                name="新增订阅搜索",
-                minutes=5,
-                kwargs={"job_id": "new_subscribe_search"},
-            )
-
-            # 检查更新订阅TMDB数据（每隔6小时）
-            self._scheduler.add_job(
-                self.start,
-                "interval",
-                id="subscribe_tmdb",
-                name="订阅元数据更新",
-                hours=6,
-                kwargs={"job_id": "subscribe_tmdb"},
-            )
-
-            # 订阅状态每隔24小时搜索一次
-            if settings.SUBSCRIBE_SEARCH:
-                self._scheduler.add_job(
-                    self.start,
-                    "interval",
-                    id="subscribe_search",
-                    name="订阅搜索补全",
-                    hours=settings.SUBSCRIBE_SEARCH_INTERVAL,
-                    kwargs={"job_id": "subscribe_search"},
-                )
-
-            if settings.SUBSCRIBE_MODE == "spider":
-                # 站点首页种子定时刷新模式
-                triggers = TimerUtils.random_scheduler(num_executions=32)
-                for trigger in triggers:
-                    self._scheduler.add_job(
-                        self.start,
-                        "cron",
-                        id=f"subscribe_refresh|{trigger.hour}:{trigger.minute}",
-                        name="订阅刷新",
-                        hour=trigger.hour,
-                        minute=trigger.minute,
-                        kwargs={"job_id": "subscribe_refresh"},
-                    )
-            else:
-                # RSS订阅模式
-                if (
-                        not settings.SUBSCRIBE_RSS_INTERVAL
-                        or not str(settings.SUBSCRIBE_RSS_INTERVAL).isdigit()
-                ):
-                    settings.SUBSCRIBE_RSS_INTERVAL = 30
-                elif int(settings.SUBSCRIBE_RSS_INTERVAL) < 5:
-                    settings.SUBSCRIBE_RSS_INTERVAL = 5
-                self._scheduler.add_job(
-                    self.start,
-                    "interval",
-                    id="subscribe_refresh",
-                    name="RSS订阅刷新",
-                    minutes=int(settings.SUBSCRIBE_RSS_INTERVAL),
-                    kwargs={"job_id": "subscribe_refresh"},
-                )
-
-            # 关注订阅分享（每1小时）
-            self._scheduler.add_job(
-                self.start,
-                "interval",
-                id="subscribe_follow",
-                name="关注的订阅分享",
-                hours=1,
-                kwargs={"job_id": "subscribe_follow"},
-            )
-
-            # 下载器文件转移（每5分钟）
-            self._scheduler.add_job(
-                self.start,
-                "interval",
-                id="transfer",
-                name="下载文件整理",
-                minutes=5,
-                kwargs={"job_id": "transfer"},
-            )
-
-            # 后台刷新TMDB壁纸
-            self._scheduler.add_job(
-                self.start,
-                "interval",
-                id="random_wallpager",
-                name="壁纸缓存",
-                minutes=30,
-                next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=1),
-                kwargs={"job_id": "random_wallpager"},
-            )
-
-            # 公共定时服务
             self._scheduler.add_job(
                 self.start,
                 "interval",
@@ -537,7 +349,6 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 kwargs={"job_id": "scheduler_job"},
             )
 
-            # 缓存清理服务，每隔24小时
             self._scheduler.add_job(
                 self.start,
                 "interval",
@@ -547,8 +358,12 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 kwargs={"job_id": "clear_cache"},
             )
 
-            # 数据表清理服务，每天凌晨执行一次
             if settings.DATA_CLEANUP_ENABLE:
+                self._jobs["data_cleanup"] = {
+                    "name": "数据表清理",
+                    "func": SchedulerChain().cleanup,
+                    "running": False,
+                }
                 self._scheduler.add_job(
                     self.start,
                     "cron",
@@ -559,40 +374,12 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     kwargs={"job_id": "data_cleanup"},
                 )
 
-            # 推荐缓存
-            self._scheduler.add_job(
-                self.start,
-                "interval",
-                id="recommend_refresh",
-                name="推荐缓存",
-                hours=24,
-                next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(seconds=5),
-                kwargs={"job_id": "recommend_refresh"},
-            )
-
-            # 插件市场缓存
-            self._scheduler.add_job(
-                self.start,
-                "interval",
-                id="plugin_market_refresh",
-                name="插件市场缓存",
-                minutes=30,
-                kwargs={"job_id": "plugin_market_refresh"},
-            )
-
-            # 订阅日历缓存
-            self._scheduler.add_job(
-                self.start,
-                "interval",
-                id="subscribe_calendar_cache",
-                name="订阅日历缓存",
-                hours=6,
-                next_run_time=datetime.now(pytz.timezone(settings.TZ)) + timedelta(minutes=2),
-                kwargs={"job_id": "subscribe_calendar_cache"},
-            )
-
-            # 主动内存回收
             if settings.MEMORY_GC_INTERVAL:
+                self._jobs["full_gc"] = {
+                    "name": "主动内存回收",
+                    "func": self.full_gc,
+                    "running": False,
+                }
                 self._scheduler.add_job(
                     self.start,
                     "interval",
@@ -602,36 +389,25 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     kwargs={"job_id": "full_gc"},
                 )
 
-            # 智能体定时任务检查
-            if settings.AI_AGENT_ENABLE and settings.AI_AGENT_JOB_INTERVAL:
-                self._scheduler.add_job(
-                    self.start,
-                    "interval",
-                    id="agent_heartbeat",
-                    name="智能体定时任务",
-                    hours=settings.AI_AGENT_JOB_INTERVAL,
-                    kwargs={"job_id": "agent_heartbeat"},
-                )
-
-            # 安装版本统计上报
-            if settings.USAGE_STATISTIC_SHARE:
-                self._scheduler.add_job(
-                    self.start,
-                    "interval",
-                    id="usage_report",
-                    name="安装版本统计上报",
-                    hours=12,
-                    kwargs={"job_id": "usage_report"},
-                )
-
-            # 初始化工作流服务
-            self.init_workflow_jobs()
-
-            # 初始化插件服务
             self.init_plugin_jobs()
-
-            # 启动定时服务
             self._scheduler.start()
+
+    @staticmethod
+    def _has_enabled_mediaserver() -> bool:
+        """判断当前配置中是否至少存在一个已启用的媒体服务器。"""
+        from app.db.systemconfig_oper import SystemConfigOper
+        from app.schemas import MediaServerConf
+        from app.schemas.types import SystemConfigKey
+
+        configs = SystemConfigOper().get(SystemConfigKey.MediaServers) or []
+        return any(MediaServerConf(**config).enabled for config in configs)
+
+    @staticmethod
+    def _sync_mediaservers() -> None:
+        """按需加载媒体服务器链并执行同步。"""
+        from app.chain.mediaserver import MediaServerChain
+
+        MediaServerChain().sync()
 
     def __prepare_job(self, job_id: str) -> Optional[dict]:
         """
@@ -834,9 +610,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         finally:
             self.__finish_job(job_id=job_id, success=success, error=error)
 
-    def start(self, job_id: str, *args, **kwargs) -> None:
+    def start(self, job_id: str, *args, **kwargs) -> bool:
         """
-        启动定时服务
+        启动定时服务，任务不存在、正在运行或执行失败时返回 False。
         """
 
         def __start_coro(coro) -> bool:
@@ -863,7 +639,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         # 获取定时任务
         job = self.__prepare_job(job_id)
         if not job:
-            return
+            logger.warning(f"定时任务不存在、已禁用或正在运行：{job_id}")
+            return False
         success = True
         error = None
         deferred_finish = False
@@ -873,26 +650,28 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 kwargs = dict(job.get("kwargs") or {})
             func = job.get("func")
             if not func:
-                return
-            if self.__supports_progress_callback(func) and "progress_callback" not in kwargs:
+                success = False
+                error = "定时任务未配置执行函数"
+            elif self.__supports_progress_callback(func) and "progress_callback" not in kwargs:
                 kwargs["progress_callback"] = self.__build_progress_callback(
                     job_id=job_id, job=job
                 )
-            # 是否多进程运行
-            run_in_process = job.get("run_in_process", False)
-            if inspect.iscoroutinefunction(func):
-                # 协程函数
-                deferred_finish = __start_coro(func(*args, **kwargs))
-            elif run_in_process:
-                # 多进程运行
-                p = multiprocessing.Process(target=func, args=args, kwargs=kwargs)
-                p.start()
-                p.join()
-            else:
-                # 普通函数
-                result = func(*args, **kwargs)
-                error = self.__get_result_error(result)
-                success = error is None
+            if func:
+                # 是否多进程运行
+                run_in_process = job.get("run_in_process", False)
+                if inspect.iscoroutinefunction(func):
+                    # 协程函数
+                    deferred_finish = __start_coro(func(*args, **kwargs))
+                elif run_in_process:
+                    # 多进程运行
+                    p = multiprocessing.Process(target=func, args=args, kwargs=kwargs)
+                    p.start()
+                    p.join()
+                else:
+                    # 普通函数
+                    result = func(*args, **kwargs)
+                    error = self.__get_result_error(result)
+                    success = error is None
         except Exception as e:
             success = False
             error = str(e)
@@ -901,6 +680,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             if not deferred_finish:
                 # 运行结束
                 self.__finish_job(job_id=job_id, success=success, error=error)
+        return success
 
     def init_plugin_jobs(self):
         """
@@ -918,43 +698,12 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         self.update_plugin_job(plugin_id)
 
     def init_workflow_jobs(self):
-        """
-        初始化工作流定时服务
-        """
-        for workflow in WorkflowChain().get_timer_workflows() or []:
-            self.update_workflow_job(workflow)
+        """Lite 不注册工作流定时服务。"""
+        return None
 
-    def remove_workflow_job(self, workflow: Workflow):
-        """
-        移除工作流服务
-        """
-        if not self._scheduler:
-            return
-        with self._lock:
-            job_id = f"workflow-{workflow.id}"
-            service = self._jobs.pop(job_id, {})
-            if not service:
-                return
-            try:
-                # 在调度器中查找并移除对应的 job
-                job_removed = False
-                for job in list(self._scheduler.get_jobs()):
-                    if job_id == job.id:
-                        try:
-                            self._scheduler.remove_job(job.id)
-                            job_removed = True
-                        except JobLookupError:
-                            pass
-                        break
-                if job_removed:
-                    logger.info(f"移除工作流服务：{service.get('name')}")
-            except Exception as e:
-                logger.error(f"移除工作流服务失败：{str(e)} - {job_id}: {service}")
-                SchedulerChain().messagehelper.put(
-                    title=f"工作流 {workflow.name} 服务移除失败",
-                    message=str(e),
-                    role="system",
-                )
+    def remove_workflow_job(self, _workflow: Any) -> None:
+        """Lite 兼容入口：工作流能力关闭时无需移除任务。"""
+        return None
 
     def remove_plugin_job(self, pid: str, job_id: Optional[str] = None):
         """
@@ -1008,40 +757,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                         role="system",
                     )
 
-    def update_workflow_job(self, workflow: Workflow):
-        """
-        更新工作流定时服务
-        """
-        if not self._scheduler:
-            return
-        # 移除该工作流的全部服务
-        self.remove_workflow_job(workflow)
-        # 添加工作流服务
-        with self._lock:
-            try:
-                job_id = f"workflow-{workflow.id}"
-                self._jobs[job_id] = {
-                    "func": WorkflowChain().process,
-                    "name": workflow.name,
-                    "provider_name": "工作流",
-                    "running": False,
-                }
-                self._scheduler.add_job(
-                    self.start,
-                    trigger=CronTrigger.from_crontab(workflow.timer),
-                    id=job_id,
-                    name=workflow.name,
-                    kwargs={"job_id": job_id, "workflow_id": workflow.id},
-                    replace_existing=True,
-                )
-                logger.info(f"注册工作流服务：{workflow.name} - {workflow.timer}")
-            except Exception as e:
-                logger.error(f"注册工作流服务失败：{workflow.name} - {str(e)}")
-                SchedulerChain().messagehelper.put(
-                    title=f"工作流 {workflow.name} 服务注册失败",
-                    message=str(e),
-                    role="system",
-                )
+    def update_workflow_job(self, _workflow: Any) -> None:
+        """Lite 兼容入口：工作流能力关闭时不注册任务。"""
+        return None
 
     def update_plugin_job(self, pid: str):
         """

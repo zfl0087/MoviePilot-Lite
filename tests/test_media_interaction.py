@@ -138,6 +138,7 @@ def _build_single_download_dir() -> list[TransferDirectoryConf]:
     ]
 
 
+@pytest.mark.skip(reason="Lite 固定移除传统搜索与下载交互")
 def test_message_routes_text_reply_to_media_interaction_before_ai():
     """已有传统媒体交互时，用户回复应优先交给传统交互处理。"""
     chain = MessageChain()
@@ -1510,6 +1511,7 @@ def test_target_plugin_filter_only_allows_target_plugin_handler():
     assert should_dispatch(module_handler, "tests.module_handler", "demo_plugin") is False
 
 
+@pytest.mark.skip(reason="Lite 固定移除传统搜索与下载交互")
 def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
     """全局 AI 开启时，/noai 前缀应让本条消息进入传统搜索交互。"""
     chain = MessageChain()
@@ -1550,6 +1552,7 @@ def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
     assert len(request.items) == 2
 
 
+@pytest.mark.skip(reason="Lite 固定移除传统搜索与下载交互")
 def test_noai_prefix_preserves_traditional_interaction_priority_after_search():
     """通过 /noai 进入传统交互后，后续选择应继续优先走传统交互。"""
     chain = MessageChain()
@@ -1586,6 +1589,7 @@ def test_noai_prefix_preserves_traditional_interaction_priority_after_search():
     handle_ai.assert_not_called()
 
 
+@pytest.mark.skip(reason="Lite 固定移除传统搜索与下载交互")
 def test_callback_routes_to_media_interaction_chain():
     """媒体按钮回调应路由到媒体交互链。"""
     chain = MessageChain()
@@ -1687,6 +1691,7 @@ def test_media_interaction_legacy_page_callback_updates_existing_request():
     assert notification.original_chat_id == "456"
 
 
+@pytest.mark.skip(reason="Lite 固定移除下载器交互")
 def test_torrent_selection_prompts_download_dir_buttons_before_download():
     """匹配当前媒体的目录有多个时，应先发送下载目录按钮而不是立即下载。"""
     chain = MediaInteractionChain()
@@ -1732,6 +1737,7 @@ def test_torrent_selection_prompts_download_dir_buttons_before_download():
     assert notification.buttons[0][0]["callback_data"] == f"media:{request.request_id}:download-dir:1"
 
 
+@pytest.mark.skip(reason="Lite 固定移除下载器交互")
 def test_torrent_selection_skips_download_dir_when_only_one_dir_matches_media():
     """匹配当前媒体的目录只有一个时，应跳过目录选择并交给下载链自动匹配。"""
     chain = MediaInteractionChain()
@@ -1772,6 +1778,7 @@ def test_torrent_selection_skips_download_dir_when_only_one_dir_matches_media():
     assert "save_path" not in download_single.call_args.kwargs
 
 
+@pytest.mark.skip(reason="Lite 固定移除下载器交互")
 def test_torrent_selection_skips_download_dir_when_user_has_single_dir():
     """用户只有一个下载目录时，也应跳过目录选择并交给下载链自动匹配。"""
     chain = MediaInteractionChain()
@@ -1852,6 +1859,7 @@ def test_torrent_selection_prompts_text_download_dir_for_plain_channel():
     assert "动画下载" not in notification.text
 
 
+@pytest.mark.skip(reason="Lite 固定移除下载器交互")
 def test_download_dir_callback_runs_pending_single_download_without_save_path_for_auto():
     """下载目录选择自动匹配时，应不传 save_path 继续执行挂起的单资源下载。"""
     chain = MediaInteractionChain()
@@ -1894,6 +1902,7 @@ def test_download_dir_callback_runs_pending_single_download_without_save_path_fo
     assert download_single.call_args.kwargs["save_path"] is None
 
 
+@pytest.mark.skip(reason="Lite 固定移除下载器交互")
 def test_download_dir_callback_runs_pending_single_download_with_save_path():
     """下载目录按钮回调应使用所选 save_path 继续执行挂起的单资源下载。"""
     chain = MediaInteractionChain()
@@ -1936,6 +1945,7 @@ def test_download_dir_callback_runs_pending_single_download_with_save_path():
     assert download_single.call_args.kwargs["save_path"] == "/downloads/movies"
 
 
+@pytest.mark.skip(reason="Lite 固定移除下载器交互")
 def test_download_dir_text_reply_runs_pending_single_download_without_save_path():
     """下载目录文本回复选择自动匹配时应不传 save_path。"""
     chain = MediaInteractionChain()

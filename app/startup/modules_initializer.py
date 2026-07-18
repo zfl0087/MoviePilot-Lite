@@ -1,20 +1,14 @@
 import inspect
 from typing import Callable
 
-from app.helper.redis import RedisHelper, AsyncRedisHelper
-
 from app.utils.system import SystemUtils
 from app.log import logger
 from app.core.config import settings
 from app.core.module import ModuleManager
 from app.core.event import EventManager
 from app.helper.thread import ThreadHelper
-from app.helper.display import DisplayHelper
-from app.helper.doh import DohHelper
 from app.helper.message import stop_message
-from app.helper.server import MoviePilotServerHelper
 from app.db import close_database
-from app.startup.agent_initializer import init_agent, stop_agent
 
 
 def start_frontend():
@@ -93,15 +87,14 @@ async def stop_modules():
         except Exception as err:
             logger.error(f"关闭{name}失败：{err}")
 
-    await run_step("AI智能体", stop_agent)
     await run_step("模块", lambda: ModuleManager().stop())
     await run_step("事件消费", lambda: EventManager().stop())
-    await run_step("虚拟显示", lambda: DisplayHelper().stop())
-    await run_step("DoH服务", lambda: DohHelper().shutdown())
+    if settings.DOH_ENABLE:
+        from app.helper.doh import DohHelper
+
+        await run_step("DoH服务", lambda: DohHelper().shutdown())
     await run_step("线程池", lambda: ThreadHelper().shutdown())
     await run_step("消息服务", stop_message)
-    await run_step("Redis缓存连接", lambda: RedisHelper().close())
-    await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
     await run_step("数据库连接", close_database)
     await run_step("前端服务", stop_frontend)
     await run_step("临时文件", clear_temp)
@@ -111,20 +104,13 @@ def init_modules():
     """
     启动模块
     """
-    # 虚拟显示
-    DisplayHelper()
-    # DoH
-    DohHelper()
+    if settings.DOH_ENABLE:
+        from app.helper.doh import DohHelper
+
+        DohHelper()
     # 加载模块
     ModuleManager()
     # 启动事件消费
     EventManager().start()
-    # 初始化共享服务端状态
-    MoviePilotServerHelper.init_plugin_report()
-    MoviePilotServerHelper.init_subscribe_report()
-    MoviePilotServerHelper.get_user_uuid()
-    MoviePilotServerHelper.get_github_user()
-    # 初始化AI智能体
-    init_agent()
     # 启动前端服务
     start_frontend()

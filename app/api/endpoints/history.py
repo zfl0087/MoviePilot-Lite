@@ -8,12 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app import schemas
-from app.agent import ReplyMode, agent_manager
-from app.agent.prompt.transfer_redo import (
-    build_batch_manual_redo_prompt,
-    build_manual_redo_prompt,
-)
 from app.chain.storage import StorageChain
+from app.core.capability import Capability, is_capability_enabled
 from app.core.config import settings, global_vars
 from app.core.event import eventmanager
 from app.core.security import verify_token
@@ -44,6 +40,8 @@ def normalize_history_ids(history_ids: list[int]) -> list[int]:
 
 def _start_ai_redo_task(history_id: int, prompt: str, progress_key: str):
     """在后台线程中启动单条 AI 重新整理任务，并通过 ProgressHelper 实时更新进度。"""
+    from app.agent import ReplyMode, agent_manager
+
     progress = ProgressHelper(progress_key)
     progress.start()
     progress.update(
@@ -88,7 +86,9 @@ def _start_batch_ai_redo_task(
     prompt: str,
     progress_key: str,
 ):
-    """在后台线程中启动批量 AI 重新整理任务，并通过 ProgressHelper 实时更新进度。"""
+    """在 Agent 能力启用时启动批量 AI 重新整理任务。"""
+    from app.agent import ReplyMode, agent_manager
+
     progress = ProgressHelper(progress_key)
     progress.start()
     progress.update(
@@ -270,12 +270,17 @@ def ai_redo_transfer_history(
     """
     手动触发单条历史记录的 AI 重新整理，并返回进度键。
     """
-    if not settings.AI_AGENT_ENABLE:
+    if (
+        not is_capability_enabled(Capability.AGENT)
+        or not settings.AI_AGENT_ENABLE
+    ):
         return schemas.Response(success=False, message="MoviePilot智能助手未启用")
 
     history = TransferHistory.get(db, history_id)
     if not history:
         return schemas.Response(success=False, message="整理记录不存在")
+
+    from app.agent.prompt.transfer_redo import build_manual_redo_prompt
 
     prompt = build_manual_redo_prompt(history)
     progress_key = f"ai_redo_transfer_{history_id}_{int(time.time() * 1000)}"
@@ -299,7 +304,10 @@ def batch_ai_redo_transfer_history(
     """
     手动触发多条历史记录的 AI 批量重新整理，并返回进度键。
     """
-    if not settings.AI_AGENT_ENABLE:
+    if (
+        not is_capability_enabled(Capability.AGENT)
+        or not settings.AI_AGENT_ENABLE
+    ):
         return schemas.Response(success=False, message="MoviePilot智能助手未启用")
 
     history_ids = normalize_history_ids(payload.history_ids)
@@ -321,6 +329,8 @@ def batch_ai_redo_transfer_history(
             message="整理记录不存在: "
             + ", ".join(str(history_id) for history_id in missing_ids),
         )
+
+    from app.agent.prompt.transfer_redo import build_batch_manual_redo_prompt
 
     prompt = build_batch_manual_redo_prompt(histories)
     progress_key = f"ai_redo_transfer_batch_{int(time.time() * 1000)}"

@@ -255,6 +255,7 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             userid="fallback",
         )
 
+    @unittest.skip("Lite 固定移除 Agent 消息 worker")
     def test_async_agent_leaves_processing_status_to_worker(self):
         chain = MessageChain.__new__(MessageChain)
 

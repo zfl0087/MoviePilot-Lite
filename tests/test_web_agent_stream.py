@@ -4,6 +4,8 @@ from queue import Queue
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app import schemas
 from app.agent import ReplyMode, agent_manager
 from app.api.endpoints.agent import (
@@ -181,6 +183,7 @@ def test_build_web_agent_command_items_returns_slash_commands():
     ]
 
 
+@pytest.mark.skip(reason="Lite 不注册 Web Agent 站点命令")
 def test_build_web_agent_command_items_includes_sites_command():
     """WebAgent 命令建议应包含内建站点管理命令。"""
     with patch("app.command.Scheduler"), patch("app.command.ThreadHelper"):

@@ -16,12 +16,20 @@ from cachetools import LRUCache as MemoryLRUCache
 from cachetools import TTLCache as MemoryTTLCache
 from cachetools.keys import hashkey
 
+from app.core.capability import Capability, is_capability_enabled
 from app.core.config import settings
-from app.helper.redis import RedisHelper, AsyncRedisHelper
 from app.log import logger
 
 # 默认缓存区
 DEFAULT_CACHE_REGION = "DEFAULT"
+
+
+def _redis_backend_enabled() -> bool:
+    """仅在固定能力配置允许 Redis 时接受历史 Redis 设置。"""
+    return (
+        is_capability_enabled(Capability.REDIS)
+        and settings.CACHE_BACKEND_TYPE == "redis"
+    )
 # 默认缓存大小
 DEFAULT_CACHE_SIZE = 1024
 # 默认缓存有效期
@@ -218,7 +226,7 @@ class CacheBackend(ABC):
         """
         判断当前缓存后端是否为 Redis
         """
-        return settings.CACHE_BACKEND_TYPE == "redis"
+        return _redis_backend_enabled()
 
 
 class AsyncCacheBackend(CacheBackend):
@@ -590,6 +598,8 @@ class RedisBackend(CacheBackend):
 
         :param ttl: 缓存的存活时间，单位秒
         """
+        from app.helper.redis import RedisHelper
+
         self.ttl = ttl
         self.redis_helper = RedisHelper()
 
@@ -671,6 +681,8 @@ class AsyncRedisBackend(AsyncCacheBackend):
 
         :param ttl: 缓存的存活时间，单位秒
         """
+        from app.helper.redis import AsyncRedisHelper
+
         self.ttl = ttl
         self.redis_helper = AsyncRedisHelper()
 
@@ -1016,7 +1028,7 @@ def FileCache(base: Path = settings.TEMP_PATH, ttl: Optional[int] = None) -> Cac
     """
     获取文件缓存后端实例（Redis或文件系统），ttl仅在Redis环境中有效
     """
-    if settings.CACHE_BACKEND_TYPE == "redis":
+    if _redis_backend_enabled():
         # 如果使用 Redis，则设置缓存的存活时间为配置的天数转换为秒
         return RedisBackend(ttl=ttl or settings.TEMP_FILE_DAYS * 24 * 3600)
     else:
@@ -1028,7 +1040,7 @@ def AsyncFileCache(base: Path = settings.TEMP_PATH, ttl: Optional[int] = None) -
     """
     获取文件异步缓存后端实例（Redis或文件系统），ttl仅在Redis环境中有效
     """
-    if settings.CACHE_BACKEND_TYPE == "redis":
+    if _redis_backend_enabled():
         # 如果使用 Redis，则设置缓存的存活时间为配置的天数转换为秒
         return AsyncRedisBackend(ttl=ttl or settings.TEMP_FILE_DAYS * 24 * 3600)
     else:
@@ -1047,7 +1059,7 @@ def Cache(cache_type: Literal['ttl', 'lru'] = 'ttl',
     :param ttl: 缓存的默认存活时间，单位秒
     :return: 返回缓存后端实例
     """
-    if settings.CACHE_BACKEND_TYPE == "redis":
+    if _redis_backend_enabled():
         return RedisBackend(ttl=ttl)
     else:
         # 使用内存缓存，maxsize需要有值
@@ -1065,7 +1077,7 @@ def AsyncCache(cache_type: Literal['ttl', 'lru'] = 'ttl',
     :param ttl: 缓存的默认存活时间，单位秒
     :return: 返回异步缓存后端实例
     """
-    if settings.CACHE_BACKEND_TYPE == "redis":
+    if _redis_backend_enabled():
         return AsyncRedisBackend(ttl=ttl)
     else:
         # 使用异步内存缓存，maxsize需要有值

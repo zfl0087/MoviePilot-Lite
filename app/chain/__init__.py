@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import inspect
 import pickle
@@ -6,12 +8,9 @@ from abc import ABCMeta
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Any, Tuple, List, Set, Union, Dict
+from typing import Optional, Any, Tuple, List, Set, Union, Dict, TYPE_CHECKING
 
 from fastapi.concurrency import run_in_threadpool
-from qbittorrentapi import TorrentFilesList
-from transmission_rpc import File
-
 from app.core.cache import FileCache, AsyncFileCache, fresh, async_fresh
 from app.core.config import settings
 from app.core.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
@@ -50,6 +49,10 @@ from app.schemas.types import (
     MessageChannel,
 )
 from app.utils.object import ObjectUtils
+
+if TYPE_CHECKING:
+    from qbittorrentapi import TorrentFilesList
+    from transmission_rpc import File
 
 
 class ChainBase(metaclass=ABCMeta):
