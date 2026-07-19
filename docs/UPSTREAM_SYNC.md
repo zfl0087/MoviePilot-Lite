@@ -76,10 +76,11 @@ flowchart LR
     C --> D["匹配对应前端版本"]
     D --> E["冲突与能力边界审查"]
     E --> F["后端、前端和集成测试"]
-    F --> G["构建私有候选镜像"]
-    G --> H["Canary 真实验证"]
-    H --> I["用户批准"]
-    I --> J["合入 main 并发布固定版本"]
+    F --> G["构建私有 GHCR 候选镜像"]
+    G --> H["按摘要同步到私有 Docker Hub"]
+    H --> I["Canary 真实验证"]
+    I --> J["用户批准"]
+    J --> K["合入 main 并发布固定版本"]
 ```
 
 标准步骤：
@@ -92,8 +93,9 @@ flowchart LR
 6. 重新验证 Lite 能力门控及插件兼容性。
 7. 分别通过后端、前端和集成测试。
 8. 合入 `lite` 并构建固定提交对应的候选镜像。
-9. 在 Canary 实例完成真实115工作流验证。
-10. 获得用户明确批准后，将同一候选内容推进到 `main` 并发布正式版本。
+9. 按候选标签和 GHCR 摘要将同一双架构镜像同步到私有 Docker Hub，供 NAS 拉取。
+10. 在 Canary 实例完成真实115工作流验证。
+11. 获得用户明确批准后，将同一候选内容推进到 `main` 并发布正式版本。
 
 同步过程中任何阶段失败，都必须停止后续发布，不得自动降级测试范围或忽略失败。
 
@@ -224,7 +226,11 @@ Canary 使用的真实令牌只保存在实例安全配置中，不写入仓库�
 
 ## 14. 私有镜像与发布
 
-- 初期只使用与私有仓库关联的私有 GHCR，不使用 Docker Hub。
+- GHCR 是候选镜像的可信源和构建产物主记录；私有 Docker Hub `zfl0087/moviepilot-lite` 仅作为 NAS 拉取镜像的分发镜像。
+- Docker Hub 同步只能由维护者手动触发，且必须同时提供不可变候选标签和预期 GHCR 摘要。
+- 同步前必须核对 GHCR 实际摘要；Docker Hub 目标标签已存在时，只允许相同摘要幂等通过，不得覆盖指向不同摘要的标签。
+- GitHub Actions 使用仓库 Secrets `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN` 登录 Docker Hub；CI Token 仅授予 Read & Write，不授予 Delete。
+- NAS 使用与 CI 分离的 Docker Hub Read-only Token。Token 不得写入源码、日志、测试产物、文档或聊天记录。
 - 不发布或部署浮动的 `latest`。
 - 候选和正式镜像均使用完整版本标签。
 - 生产 Compose 固定具体版本，建议同时记录镜像摘要。

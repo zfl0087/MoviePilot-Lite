@@ -1,0 +1,142 @@
+name: MoviePilot Lite Docker Hub Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_version:
+        description: Immutable Lite candidate tag, for example v2.14.5-lite.1-rc.1
+        required: true
+        type: string
+      source_digest:
+        description: Expected GHCR manifest digest, including the sha256 prefix
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lite-dockerhub-sync-${{ inputs.candidate_version }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Copy private Lite candidate to Docker Hub
+    runs-on: ubuntu-latest
+    environment: lite-candidate
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Validate immutable inputs
+        shell: bash
+        env:
+          CANDIDATE_VERSION: ${{ inputs.candidate_version }}
+          SOURCE_DIGEST: ${{ inputs.source_digest }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-lite\.[0-9]+-rc\.[0-9]+$ ]]
+          [[ "$SOURCE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to private GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Log in to private Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Verify source and synchronize immutable tag
+        id: sync
+        shell: bash
+        env:
+          CANDIDATE_VERSION: ${{ inputs.candidate_version }}
+          SOURCE_DIGEST: ${{ inputs.source_digest }}
+          SOURCE_IMAGE: ghcr.io/zfl0087/moviepilot-lite
+          TARGET_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/moviepilot-lite
+        run: |
+          set -euo pipefail
+
+          source_ref="$SOURCE_IMAGE:$CANDIDATE_VERSION"
+          target_ref="$TARGET_IMAGE:$CANDIDATE_VERSION"
+
+          inspect_digest() {
+            awk '$1 == "Digest:" { print $2; exit }'
+          }
+
+          source_output="$(docker buildx imagetools inspect "$source_ref")"
+          source_digest="$(inspect_digest <<< "$source_output")"
+          if [[ -z "$source_digest" || "$source_digest" != "$SOURCE_DIGEST" ]]; then
+            echo "::error::Source digest mismatch: expected $SOURCE_DIGEST, got ${source_digest:-missing}"
+            exit 1
+          fi
+
+          sync_result="copied"
+          if target_output="$(docker buildx imagetools inspect "$target_ref" 2>/dev/null)"; then
+            target_digest="$(inspect_digest <<< "$target_output")"
+            if [[ "$target_digest" != "$SOURCE_DIGEST" ]]; then
+              echo "::error::Target tag already exists with digest $target_digest"
+              exit 1
+            fi
+            sync_result="already_present"
+          else
+            docker buildx imagetools create --tag "$target_ref" "$source_ref@$SOURCE_DIGEST"
+          fi
+
+          target_output="$(docker buildx imagetools inspect "$target_ref")"
+          target_digest="$(inspect_digest <<< "$target_output")"
+          if [[ -z "$target_digest" || "$target_digest" != "$SOURCE_DIGEST" ]]; then
+            echo "::error::Target digest mismatch: expected $SOURCE_DIGEST, got ${target_digest:-missing}"
+            exit 1
+          fi
+
+          grep -Eq 'Platform:[[:space:]]+linux/amd64' <<< "$target_output"
+          grep -Eq 'Platform:[[:space:]]+linux/arm64' <<< "$target_output"
+
+          {
+            echo "source_ref=$source_ref"
+            echo "target_ref=$target_ref"
+            echo "source_digest=$source_digest"
+            echo "target_digest=$target_digest"
+            echo "sync_result=$sync_result"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write synchronization report
+        shell: bash
+        env:
+          CANDIDATE_VERSION: ${{ inputs.candidate_version }}
+          SOURCE_REF: ${{ steps.sync.outputs.source_ref }}
+          TARGET_REF: ${{ steps.sync.outputs.target_ref }}
+          SOURCE_DIGEST: ${{ steps.sync.outputs.source_digest }}
+          TARGET_DIGEST: ${{ steps.sync.outputs.target_digest }}
+          SYNC_RESULT: ${{ steps.sync.outputs.sync_result }}
+        run: |
+          set -euo pipefail
+          cat > lite-dockerhub-sync-report.txt <<EOF
+          candidate_version=$CANDIDATE_VERSION
+          source_image=$SOURCE_REF
+          target_image=$TARGET_REF
+          source_digest=$SOURCE_DIGEST
+          target_digest=$TARGET_DIGEST
+          platforms=linux/amd64,linux/arm64
+          sync_result=$SYNC_RESULT
+          EOF
+
+      - name: Upload synchronization evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: moviepilot-lite-${{ inputs.candidate_version }}-dockerhub-sync
+          path: lite-dockerhub-sync-report.txt
+          if-no-files-found: error
+          retention-days: 14
