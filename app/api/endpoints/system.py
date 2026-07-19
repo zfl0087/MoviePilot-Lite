@@ -20,7 +20,11 @@ from app import schemas
 from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
 from app.chain.system import SystemChain
-from app.core.capability import Capability, is_capability_enabled
+from app.core.capability import (
+    Capability,
+    get_lite_capability_manifest,
+    is_capability_enabled,
+)
 from app.core.config import global_vars, settings
 from app.core.event import eventmanager
 from app.core.metainfo import MetaInfo
@@ -668,6 +672,7 @@ def get_global_setting(token: str):
         {
             "FRONTEND_VERSION": SystemChain.get_frontend_version(),
             "BACKEND_VERSION": APP_VERSION,
+            "LITE_CAPABILITIES": get_lite_capability_manifest(),
         }
     )
     # 仅在后端开发模式下返回该标记，避免生产环境暴露无意义运行态信息

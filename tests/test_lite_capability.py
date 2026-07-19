@@ -6,7 +6,9 @@ import subprocess
 import sys
 
 import pytest
+from fastapi import HTTPException
 
+from app.api.endpoints.system import get_global_setting
 from app.core.capability import (
     Capability,
     LITE_CAPABILITIES,
@@ -53,6 +55,21 @@ EXPECTED_DISABLED = {
     "voice-processing",
     "workflow",
 }
+
+
+def test_global_settings_exposes_lite_capabilities():
+    """登录前全局设置必须暴露后端的精确 Lite 能力清单"""
+    response = get_global_setting("moviepilot")
+
+    assert response.data["LITE_CAPABILITIES"] == get_lite_capability_manifest()
+
+
+def test_global_settings_rejects_wrong_token():
+    """Lite 能力清单不得削弱登录前全局设置的既有令牌校验"""
+    with pytest.raises(HTTPException) as error:
+        get_global_setting("wrong-token")
+
+    assert error.value.status_code == 403
 
 
 def test_lite_capabilities_are_complete_and_disjoint():

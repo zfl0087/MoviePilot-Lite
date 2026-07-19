@@ -10,7 +10,7 @@
 
 ## 2. 当前状态
 
-当前项目仍未形成可发布验收的 Lite 版本。固定能力配置、API 与模块导入前门控、PT 用户认证、启动 owner、Scheduler、内建命令、消息插件事件、Monitor/Transfer 导入隔离、Python 正式运行依赖和 Docker 静态产物合同已经有自动化及干净环境证据；双架构 Docker 候选、资源指标、前端及真实 115 Canary 仍未完成。因此本文档同时记录已实现边界和后续目标，不代表完整兼容认证。
+当前项目仍未形成可发布验收的 Lite 版本。固定能力配置、API 与模块导入前门控、PT 用户认证、启动 owner、Scheduler、内建命令、消息插件事件、Monitor/Transfer 导入隔离、Python 正式运行依赖、前端路由/构建门禁和 Docker 静态产物合同已经有自动化及干净环境证据；双架构 Docker 候选、资源指标、配对后端导航和真实 115 Canary 仍未完成。因此本文档同时记录已实现边界和后续目标，不代表完整兼容认证。
 
 首个实现基线：
 
@@ -40,7 +40,7 @@
 | 官方 `/config` 目录 | 支持 | 首次 Lite 启动前必须备份 |
 | SQLite | 支持 | 唯一正式支持的数据库 |
 | `API_TOKEN` | 支持 | 保持官方名称、用途和认证方式 |
-| Lite 能力配置版本 2 | 支持 | `auxiliary-auth` 已归入禁用集合；前端配对后必须使用相同版本 |
+| Lite 能力配置版本 2 | 有条件支持 | `auxiliary-auth` 已归入禁用集合；前端构建和 `/system/global` 运行时必须使用相同 profile/version；当前尚未形成固定提交发布记录 |
 | `U115_APP_ID` | 支持 | 保持官方配置名称 |
 | `U115_AUTH_SERVER` | 支持 | 保持可配置，不写死服务地址 |
 | 已有插件配置和数据 | 保留数据 | 按插件兼容等级决定是否加载 |
@@ -117,7 +117,7 @@ Lite 不伪造、不提高官方认证级别，也不使用固定成功结果模
 
 不支持的 API 不注册路由，访问时预期得到标准未找到响应。禁止保留返回空数据或虚假成功的兼容空壳。
 
-能力配置版本 2 已在正常 FastAPI 初始化路径完成主 API、Radarr/Sonarr 和 CookieCloud 的导入前门控。启动路径不再执行 PT 用户认证、Agent、Workflow、Display、Redis、服务端统计预取、插件自动同步、缺失依赖安装或使用统计上报。Scheduler 固定保留 `scheduler_job`、`clear_cache`、条件 `mediaserver_sync`、条件 `data_cleanup`、条件 `full_gc` 和兼容插件任务；历史订阅、下载器、推荐、壁纸、市场刷新、Agent、Workflow 与统计配置不能恢复任务。内建命令固定为 `/mediaserver_sync`、`/clear_cache`、`/restart`、`/version`，插件命令仍可注册。模块诊断 API 只枚举实际发现的 Lite 模块；路径、Token 校验、响应字段与保留模块测试语义不变。Python 正式运行入口已经移除固定 24 个禁用能力根依赖；Docker 静态定义已移除浏览器、`ffmpeg`、PT 资源、预装插件和原地更新器，但双架构候选内容及资源指标仍待验证。前端页面仍须通过后续独立变更继续裁剪。
+能力配置版本 2 已在正常 FastAPI 初始化路径完成主 API、Radarr/Sonarr 和 CookieCloud 的导入前门控。启动路径不再执行 PT 用户认证、Agent、Workflow、Display、Redis、服务端统计预取、插件自动同步、缺失依赖安装或使用统计上报。Scheduler 固定保留 `scheduler_job`、`clear_cache`、条件 `mediaserver_sync`、条件 `data_cleanup`、条件 `full_gc` 和兼容插件任务；历史订阅、下载器、推荐、壁纸、市场刷新、Agent、Workflow 与统计配置不能恢复任务。内建命令固定为 `/mediaserver_sync`、`/clear_cache`、`/restart`、`/version`，插件命令仍可注册。模块诊断 API 只枚举实际发现的 Lite 模块；路径、Token 校验、响应字段与保留模块测试语义不变。Python 正式运行入口已经移除固定 24 个禁用能力根依赖；Docker 静态定义已移除浏览器、`ffmpeg`、PT 资源、预装插件和原地更新器。前端已完成 manifest v2 配对、Lite 路由/菜单/PWA/Service Worker、非目标 provider 入口收口、插件 remote 状态失败关闭、类型/测试/覆盖率/构建和产物扫描；双架构候选内容、资源指标、配对后端导航和真实 115 Canary 仍待验证。
 
 `POST /api/v1/system/upgrade` 保留管理员认证和既有响应模型，但 Lite 固定返回失败并提示部署经过审核的固定候选镜像。普通 `/restart` 和消息 `/restart` 保持官方重启语义，不执行更新，也不消费或改写历史一次性升级标记。
 
@@ -292,6 +292,8 @@ P115StrmHelper 文档声明包含可选 Sentry 分析组件。Lite 支持配置�
 - 前后端必须使用同一能力配置版本。
 - 能力配置版本不一致时必须明确报错，不能只表现为菜单缺失或接口404。
 - 插件独立页面继续使用官方插件页面机制，但受插件兼容等级和前端依赖约束。
+
+本次本地前端候选记录：56 个 Lite 测试通过，类型检查和覆盖率门禁通过（statements/lines 96.78%、branches 83.57%、functions 100%）；生产构建转换 1964 个模块，预缓存 187 项，产物扫描 184 个文件、9,972,540 字节且未发现禁用 provider 资产或文本签名。以上仍是未提交工作树证据，不能升级为“支持”。
 
 ## 15. 部署平台兼容
 

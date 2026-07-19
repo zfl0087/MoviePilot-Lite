@@ -1,6 +1,6 @@
 # MoviePilot Lite — Project Brief
 
-> 状态：已建立固定能力与 Docker 产物合同，双架构候选构建待验证
+> 状态：已建立固定能力、前端构建与 Docker 产物合同；双架构候选和 Canary 待验证
 > 基线日期：2026-07-17  
 > 项目性质：基于 MoviePilot v2 的非官方私有精简构建
 
@@ -172,7 +172,7 @@ CI 使用模拟服务验证通用流程；真实 115 Token 不进入 GitHub Acti
 | MoviePilot 前端 | `v2` | `435e9ecfdd4febf791fd581b3be9233816cebf7f` |
 | MoviePilot 官方插件 | `main` | `4e11007980fd7703302adfa4474e494b64244b5c` |
 
-两个私有仓库已经创建，并且 Codex GitHub App 仅获准访问这两个仓库。后端 `lite` 分支已建立固定能力配置、API 路由和模块发现的导入前门控；当前已在运行时移除 `AUTH_SITE`、PT 在线认证、Agent、Workflow、Redis、订阅、搜索和下载器的启动链路。管理员登录、`API_TOKEN` 和资源 Token 固定使用本地等级 1，115 OAuth/API 保持独立。启动期只装配模块、事件、已安装插件、Lite Scheduler、Monitor、Lite Command 和条件 DoH；不会自动同步插件、安装插件依赖或上报使用统计。内建消息命令固定为 `/mediaserver_sync`、`/clear_cache`、`/restart`、`/version`，普通 115 分享链接继续广播给手动安装的 P115StrmHelper。Scheduler 只保留媒体服务器同步、公共维护、缓存清理、条件数据清理、条件主动 GC 和兼容插件任务。正式 Python 运行入口已移除 24 个 Agent/LLM、PT/下载器、浏览器、Redis/PostgreSQL 和 Windows 托盘专属根依赖；官方禁用源码测试所需包只保留在开发入口。干净运行环境已证明禁止包真实缺失时保留入口和正常生命周期可运行。Docker 定义已使用系统包允许集合，移除浏览器、`ffmpeg`、预装插件、PT 资源和官方原地更新器，保留 `ffprobe`、Rclone、Unar、Nginx/SSL/cron、普通重启及空插件目录；管理员升级 API 固定提示部署受控 Lite 候选镜像。当前尚未完成双架构候选构建、资源指标、前端裁剪或真实 115 Canary，也未构建或发布 Lite 镜像。
+两个私有仓库已经创建，并且 Codex GitHub App 仅获准访问这两个仓库。后端 `lite` 分支已建立固定能力配置、API 路由和模块发现的导入前门控；当前已在运行时移除 `AUTH_SITE`、PT 在线认证、Agent、Workflow、Redis、订阅、搜索和下载器的启动链路。管理员登录、`API_TOKEN` 和资源 Token 固定使用本地等级 1，115 OAuth/API 保持独立。启动期只装配模块、事件、已安装插件、Lite Scheduler、Monitor、Lite Command 和条件 DoH；不会自动同步插件、安装插件依赖或上报使用统计。内建消息命令固定为 `/mediaserver_sync`、`/clear_cache`、`/restart`、`/version`，普通 115 分享链接继续广播给手动安装的 P115StrmHelper。Scheduler 只保留媒体服务器同步、公共维护、缓存清理、条件数据清理、条件主动 GC 和兼容插件任务。正式 Python 运行入口已移除 24 个 Agent/LLM、PT/下载器、浏览器、Redis/PostgreSQL 和 Windows 托盘专属根依赖；官方禁用源码测试所需包只保留在开发入口。干净运行环境已证明禁止包真实缺失时保留入口和正常生命周期可运行。Docker 定义已使用系统包允许集合，移除浏览器、`ffmpeg`、预装插件、PT 资源和官方原地更新器，保留 `ffprobe`、Rclone、Unar、Nginx/SSL/cron、普通重启及空插件目录；管理员升级 API 固定提示部署受控 Lite 候选镜像。前端已消费后端 manifest v2，路由、菜单、PWA、Service Worker、依赖和产物门禁已完成；前端目标/全量 Lite 测试、类型检查、覆盖率、构建和产物扫描均有本地证据。后端 manifest 目标测试和 pylint 也已通过，但 Windows 全量官方测试仍有与本变更无关的 29 个基线失败（主要是 GBK 源码读取、禁用能力和平台特定用例）。当前尚未完成双架构候选构建、资源指标、配对后端导航验收或真实 115 Canary，也未构建或发布 Lite 镜像；前后端实现提交仍 pending。
 
 ## 12. 项目协作规则
 

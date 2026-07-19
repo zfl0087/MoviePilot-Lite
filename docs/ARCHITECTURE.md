@@ -34,7 +34,7 @@ Lite 使用唯一、不可由普通运行配置改写的能力配置。能力定
 
 API 路由门控已经消费该配置：主 API 和独立兼容接口必须先检查能力，再导入对应端点模块。PT 用户认证运行链路也已完成首批裁剪：`AUTH_SITE` 不再生效，管理员认证上下文固定为本地等级 1，插件等级 2、3、99 不再通过在线认证或私钥提升，启动阶段不再初始化站点认证/索引资源，Scheduler 不再注册 CookieCloud 同步、用户认证检查和站点数据刷新任务，也不清理历史站点用户数据。
 
-模块发现已经完成两层导入前门控。顶层无条件保留 Bangumi、豆瓣、Fanart、FileManager、TMDB、TVDB；官方消息渠道和 Emby/Jellyfin/Plex 只按启用配置加载；PT、下载器、Redis、PostgreSQL、非目标媒体服务器及未知上游包默认拒绝。FileManager 始终保留 Local，U115、Alipan、Alist、Rclone、SMB 只在已配置或经过既有认证入口明确首次设置时精确加载。Notifications、MediaServers、Storages 集合变化由 ModuleManager 统一重建，避免服务模块重复初始化。生命周期、Scheduler、Command、MessageChain、Monitor 与 TransferChain 也已完成固定集合和导入隔离；Python 正式运行依赖和 Docker 静态产物合同已按同一能力边界收敛。双架构候选、资源指标和前端门控仍由后续阶段实施，不得因当前静态裁剪而宣称完整 Lite 已经完成。
+模块发现已经完成两层导入前门控。顶层无条件保留 Bangumi、豆瓣、Fanart、FileManager、TMDB、TVDB；官方消息渠道和 Emby/Jellyfin/Plex 只按启用配置加载；PT、下载器、Redis、PostgreSQL、非目标媒体服务器及未知上游包默认拒绝。FileManager 始终保留 Local，U115、Alipan、Alist、Rclone、SMB 只在已配置或经过既有认证入口明确首次设置时精确加载。Notifications、MediaServers、Storages 集合变化由 ModuleManager 统一重建，避免服务模块重复初始化。生命周期、Scheduler、Command、MessageChain、Monitor 与 TransferChain也已完成固定集合和导入隔离；Python 正式运行依赖、前端构建门控和 Docker 静态产物合同已按同一能力边界收敛。双架构候选、资源指标、配对导航验收和真实 Canary 仍由后续阶段实施，不得因当前静态裁剪及本地前端构建通过而宣称完整 Lite 已经完成。
 
 ## 4. 能力门控
 
@@ -123,12 +123,16 @@ Lite 数据库和缓存工厂在读取第三方后端前应用固定 capability�
 
 ## 7. 前端边界
 
-- 前端构建使用后端能力定义生成的构建清单。
-- 未启用能力的页面不得进入路由表、菜单或最终构建产物。
+- 后端导出 `lite-capabilities.json`，前端构建以严格 schema 校验并静态注入；该文件不得手工维护第二份启用集合。
+- `/api/v1/system/global` 返回同一 `LITE_CAPABILITIES`，前端在加载业务页面前比较 profile/version；缺失、格式错误或版本不匹配时显示全页错误并失败关闭。
+- 路由注册表、主菜单、设置标签、搜索、首页、PWA 快捷方式和 Service Worker 只保留 Lite 可达入口；未启用页面不得动态导入或进入最终构建产物。
 - 后端仍须拒绝未启用接口，不能把前端隐藏作为安全边界。
 - 保留登录、文件管理、文件整理、整理历史、插件、消息通知、媒体服务器以及必要设置页面。
-- 前端不得独立定义另一份功能移除清单。
-- 前后端构建必须记录相同的能力配置版本，版本不匹配时应明确报错。
+- 媒体服务器核心入口只保留 Emby、Jellyfin 和 Plex；其他官方 provider 源码可为上游同步保留，但不得进入 Lite 设置、图片映射或产物。
+- 模块联邦、动态插件路由和插件侧栏继续保留；插件 remote 不存在时明确提示手动安装、启用及兼容检查，P115StrmHelper 源码不得进入核心 bundle。
+- 生产产物扫描器必须拒绝禁用路由、API 签名、专属 chunk、图标和插件源码；未知上游入口默认不得进入 Lite 构建。
+
+当前本地前端门禁证据为：56 个 Lite 测试通过、TypeScript 检查通过、覆盖率为 statements/lines 96.78%、branches 83.57%、functions 100%、生产构建转换 1964 个模块，PWA 预缓存 187 项，最终扫描 184 个文件共 9,972,540 字节。该证据对应未提交工作树，不替代后续固定提交、Docker 双架构和 Canary 记录。
 
 ## 8. 115 分享链接流程
 
@@ -175,6 +179,7 @@ Lite 数据库和缓存工厂在读取第三方后端前应用固定 capability�
 - 保留 `ffprobe`、固定版本 Rclone 和 `uv`/pip 兼容入口；不保留 `ffmpeg`、浏览器内核、PT 资源或预装插件。
 - `/app/app/plugins` 以空的可写目录进入基础镜像，P115StrmHelper 及其他兼容插件只能由管理员手动安装。
 - Git 仓库可保留必要的官方源码结构以降低合并成本，但 Lite 运行镜像必须排除未启用能力的文件和资源。
+- Lite 前端生产产物必须通过独立扫描器，且 Docker 只能消费记录了前后端提交和 manifest version 2 的固定产物。
 - 运行镜像不包含官方原地更新器；`MOVIEPILOT_AUTO_UPDATE`、历史一次性标记、升级 API 和 CLI `start/restart` 都不能覆盖当前镜像。升级只能通过上游同步、测试、固定候选镜像和人工推进完成。
 - 保持 `LANG=C.UTF-8`，中文、空格和常见标点路径必须通过文件枚举、Schema、整理和 `ffprobe` 参数往返测试。
 - 未启用网盘监控时不得产生周期性网盘扫描。
