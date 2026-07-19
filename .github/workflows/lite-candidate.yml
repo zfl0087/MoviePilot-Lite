@@ -1,0 +1,188 @@
+name: MoviePilot Lite Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_sha:
+        description: Full backend commit SHA from the private lite branch
+        required: true
+        type: string
+      frontend_sha:
+        description: Full frontend commit SHA from the private lite branch
+        required: true
+        type: string
+      candidate_version:
+        description: Immutable candidate tag, for example v2.14.5-lite.1-rc.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lite-candidate-${{ inputs.candidate_version }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    name: Build and publish Lite candidate
+    runs-on: ubuntu-latest
+    environment: lite-candidate
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout fixed backend commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.backend_sha }}
+          fetch-depth: 1
+
+      - name: Validate fixed backend commit
+        shell: bash
+        env:
+          BACKEND_SHA: ${{ inputs.backend_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$BACKEND_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse --verify HEAD)" = "$BACKEND_SHA"
+
+      - name: Create read-only frontend repository token
+        id: frontend-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.LITE_FRONTEND_APP_ID }}
+          private-key: ${{ secrets.LITE_FRONTEND_APP_PRIVATE_KEY }}
+          owner: zfl0087
+          repositories: MoviePilot-Lite-Frontend
+
+      - name: Checkout fixed frontend commit
+        uses: actions/checkout@v4
+        with:
+          repository: zfl0087/MoviePilot-Lite-Frontend
+          ref: ${{ inputs.frontend_sha }}
+          token: ${{ steps.frontend-token.outputs.token }}
+          path: frontend-source
+          fetch-depth: 1
+
+      - name: Validate fixed frontend commit
+        shell: bash
+        env:
+          FRONTEND_SHA: ${{ inputs.frontend_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$FRONTEND_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git -C frontend-source rev-parse --verify HEAD)" = "$FRONTEND_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install backend validation dependencies
+        run: python -m pip install -r requirements-dev.in
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: yarn
+          cache-dependency-path: frontend-source/yarn.lock
+
+      - name: Build fixed frontend artifact
+        working-directory: frontend-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          yarn install --frozen-lockfile
+          yarn typecheck
+          yarn test:coverage
+          yarn build
+
+      - name: Prepare verified frontend input
+        shell: bash
+        env:
+          FRONTEND_SHA: ${{ inputs.frontend_sha }}
+        run: |
+          set -euo pipefail
+          test -d frontend-source/dist
+          rm -rf candidate-frontend
+          mkdir -p candidate-frontend
+          cp -a frontend-source/dist/. candidate-frontend/
+          {
+            echo "frontend_sha=$FRONTEND_SHA"
+            find candidate-frontend -type f -print0 | sort -z | xargs -0 sha256sum
+          } > candidate-frontend.manifest
+
+      - name: Run backend Docker and workflow contracts
+        run: python -m pytest -q tests/test_lite_docker_image_contract.py tests/test_lite_candidate_workflow.py
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to private GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and publish immutable multi-architecture candidate
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/zfl0087/moviepilot-lite:${{ inputs.candidate_version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/zfl0087/MoviePilot-Lite
+            org.opencontainers.image.version=${{ inputs.candidate_version }}
+            io.moviepilot.lite.backend-sha=${{ inputs.backend_sha }}
+            io.moviepilot.lite.frontend-sha=${{ inputs.frontend_sha }}
+          build-args: |
+            FRONTEND_ARTIFACT_PATH=candidate-frontend
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=moviepilot-lite-candidate
+          cache-to: type=gha,scope=moviepilot-lite-candidate,mode=max
+
+      - name: Write candidate report
+        shell: bash
+        env:
+          BACKEND_SHA: ${{ inputs.backend_sha }}
+          FRONTEND_SHA: ${{ inputs.frontend_sha }}
+          CANDIDATE_VERSION: ${{ inputs.candidate_version }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cat > lite-candidate-report.txt <<EOF
+          candidate_version=$CANDIDATE_VERSION
+          backend_sha=$BACKEND_SHA
+          frontend_sha=$FRONTEND_SHA
+          image=ghcr.io/zfl0087/moviepilot-lite:$CANDIDATE_VERSION
+          image_digest=$IMAGE_DIGEST
+          platforms=linux/amd64,linux/arm64
+          real_115_canary=not_run
+          real_message_channels=not_run
+          real_media_servers=not_run
+          EOF
+
+      - name: Upload candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: moviepilot-lite-${{ inputs.candidate_version }}-evidence
+          path: |
+            candidate-frontend.manifest
+            lite-candidate-report.txt
+          if-no-files-found: error
+          retention-days: 14

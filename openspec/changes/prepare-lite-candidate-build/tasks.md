@@ -6,24 +6,24 @@
 
 ## 2. 前端固定产物
 
-- [ ] 2.1 在候选工作流中检出指定前端完整 SHA，并运行既有 Lite 测试、类型检查、覆盖率、生产构建和产物扫描
-- [ ] 2.2 生成带前端 SHA、文件数、字节数和哈希的不可变前端归档
+- [x] 2.1 在候选工作流中检出指定前端完整 SHA，并运行既有 Lite 测试、类型检查、覆盖率、生产构建和产物扫描
+- [x] 2.2 生成带前端 SHA、文件数、字节数和哈希的不可变前端归档
 - [ ] 2.3 增加失败测试，证明前端 SHA 不存在、门禁失败或产物哈希变化时不会进入 Docker 构建
 
 ## 3. Docker 候选输入
 
-- [ ] 3.1 为 `docker/Dockerfile` 增加候选前端产物输入，并保留非候选源码安装路径的既有行为
-- [ ] 3.2 在 Docker 合同测试中断言候选构建不下载官方前端 Release，不消费未验证工作区 `dist`
+- [x] 3.1 为 `docker/Dockerfile` 增加候选前端产物输入，并保留非候选源码安装路径的既有行为
+- [x] 3.2 在 Docker 合同测试中断言候选构建不下载官方前端 Release，不消费未验证工作区 `dist`
 - [ ] 3.3 在镜像 labels 和 Doctor/版本诊断输出中记录后端 SHA、前端 SHA 和候选版本
 
 ## 4. 手动双架构工作流
 
-- [ ] 4.1 创建 `.github/workflows/lite-candidate.yml`，只使用 `workflow_dispatch` 和完整 SHA 输入
+- [x] 4.1 创建 `.github/workflows/lite-candidate.yml`，只使用 `workflow_dispatch` 和完整 SHA 输入
 - [ ] 4.2 使用 Buildx 构建 `linux/amd64` 与 `linux/arm64`，分别保存 digest 和平台日志
 - [ ] 4.3 添加镜像内容扫描、物理缺失检查、干净容器连续启动/停止和保留能力模拟测试
 - [ ] 4.4 添加资源测量步骤，记录相同官方版本/配置下的镜像体积、冷启动、空闲 RSS/CPU 原始值与方法
 - [ ] 4.5 配置 `lite-candidate` Environment 审批后才允许写入 `ghcr.io/zfl0087/moviepilot-lite`
-- [ ] 4.6 将候选清单、报告和 digest 作为 Actions artifact 保存，失败时不得写入 `latest` 或公开渠道
+- [x] 4.6 将候选清单、报告和 digest 作为 Actions artifact 保存，失败时不得写入 `latest` 或公开渠道
 
 ## 5. 验证与收尾
 

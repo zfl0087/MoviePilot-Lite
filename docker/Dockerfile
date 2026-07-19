@@ -77,11 +77,19 @@ FROM prepare_package AS prepare_code
 WORKDIR /app
 
 COPY . .
-RUN FRONTEND_VERSION=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /app/version.py) \
-    && curl -fsSL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" -o /tmp/frontend.zip \
-    && python3 -m zipfile -e /tmp/frontend.zip / \
-    && mv /dist /public \
-    && rm -f /tmp/frontend.zip
+ARG FRONTEND_ARTIFACT_PATH=""
+RUN if [ -n "${FRONTEND_ARTIFACT_PATH}" ]; then \
+        test "${FRONTEND_ARTIFACT_PATH}" = "candidate-frontend" \
+        && test -d "/app/${FRONTEND_ARTIFACT_PATH}" \
+        && cp -a "/app/${FRONTEND_ARTIFACT_PATH}" /public \
+        && rm -rf "/app/${FRONTEND_ARTIFACT_PATH}"; \
+    else \
+        FRONTEND_VERSION=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" /app/version.py) \
+        && curl -fsSL "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" -o /tmp/frontend.zip \
+        && python3 -m zipfile -e /tmp/frontend.zip / \
+        && mv /dist /public \
+        && rm -f /tmp/frontend.zip; \
+    fi
 
 # final 阶段: 安装运行时依赖和配置最终镜像
 FROM prepare_package AS final

@@ -216,6 +216,24 @@ def test_build_does_not_preinstall_plugins_or_pt_resources() -> None:
     assert "MoviePilot-Frontend/releases/download/latest" not in dockerfile
 
 
+def test_candidate_build_accepts_verified_frontend_artifact() -> None:
+    """候选镜像必须优先消费已验证的前端产物，并保留源码安装回退路径。"""
+    dockerfile = _read(DOCKERFILE)
+
+    assert "ARG FRONTEND_ARTIFACT_PATH" in dockerfile
+    assert 'test -d "/app/${FRONTEND_ARTIFACT_PATH}"' in dockerfile
+    assert 'cp -a "/app/${FRONTEND_ARTIFACT_PATH}" /public' in dockerfile
+    assert 'FRONTEND_ARTIFACT_PATH' in dockerfile
+    assert "MoviePilot-Frontend/releases/download/${FRONTEND_VERSION}/dist.zip" in dockerfile
+
+
+def test_candidate_frontend_artifact_is_removed_from_runtime_app() -> None:
+    """前端临时输入不能随候选产物进入最终应用目录。"""
+    dockerfile = _read(DOCKERFILE)
+
+    assert 'rm -rf "/app/${FRONTEND_ARTIFACT_PATH}"' in dockerfile
+
+
 def test_image_has_no_in_place_update_entrypoint() -> None:
     """最终镜像和 entrypoint 不得包含官方原地更新入口。"""
     dockerfile = _read(DOCKERFILE)
