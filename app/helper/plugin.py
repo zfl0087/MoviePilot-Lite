@@ -30,7 +30,12 @@ from requests import Response
 from app.core.cache import cached, is_fresh
 from app.core.config import settings
 from app.db.systemconfig_oper import SystemConfigOper
-from app.helper.package import PackageInstallRequest, build_package_install_strategies
+from app.helper.package import (
+    PackageInstallRequest,
+    build_package_install_strategies,
+    normalize_wheel_archive_permissions,
+    normalize_unreadable_site_package_files,
+)
 from app.log import logger
 from app.schemas.types import SystemConfigKey
 from app.utils.http import RequestUtils, AsyncRequestUtils
@@ -1401,6 +1406,20 @@ class PluginHelper(metaclass=WeakSingleton):
         )
 
     @classmethod
+    def __normalize_package_install_permissions(cls) -> List[Path]:
+        """Repair unreadable files left by malformed wheels in the venv and tool cache."""
+        repaired_files = normalize_unreadable_site_package_files()
+        repaired_wheels = normalize_wheel_archive_permissions(Path(settings.PACKAGE_CACHE_PATH))
+        repaired_files.extend(
+            normalize_unreadable_site_package_files(Path(settings.PACKAGE_CACHE_PATH))
+        )
+        if repaired_wheels:
+            logger.warning(f"[PIP] Normalized {len(repaired_wheels)} wheel archives with unreadable entries")
+        if repaired_files:
+            logger.warning(f"[PIP] 已修复 {len(repaired_files)} 个不可读的包安装文件")
+        return repaired_files
+
+    @classmethod
     def __repair_if_runtime_broken(cls, snapshot_file: Optional[Path] = None) -> Tuple[bool, str]:
         """
         安装失败后检查主运行环境；若已异常，先恢复主程序依赖再继续向上返回安装失败。
@@ -1451,11 +1470,13 @@ class PluginHelper(metaclass=WeakSingleton):
         request = cls.__build_package_install_request(repair_target, purpose="runtime-repair")
         for strategy in build_package_install_strategies(request):
             logger.warning(f"[PIP] 运行环境异常，尝试使用策略：{strategy.strategy_name} 恢复{repair_desc}")
+            cls.__normalize_package_install_permissions()
             success, message = SystemUtils.execute_with_subprocess(
                 strategy.command,
                 env=strategy.env,
                 safe_command=strategy.safe_log_command,
             )
+            cls.__normalize_package_install_permissions()
             if success:
                 cls.__refresh_import_system()
                 return True, message
@@ -1525,6 +1546,13 @@ class PluginHelper(metaclass=WeakSingleton):
         try:
             # pip 会修改当前解释器的 site-packages，安装与缓存刷新必须串行，避免运行态模块被并发安装窗口污染。
             with cls._pip_install_lock:
+                for local_wheels_dir in resolved_dirs:
+                    repaired_wheels = normalize_wheel_archive_permissions(local_wheels_dir)
+                    if repaired_wheels:
+                        logger.warning(
+                            f"[PIP] Normalized {len(repaired_wheels)} local plugin wheel archives "
+                            f"in {local_wheels_dir}"
+                        )
                 loaded_modules_before_install = set(sys.modules.keys())
                 # 遍历策略进行安装
                 last_error = ""
@@ -1533,11 +1561,13 @@ class PluginHelper(metaclass=WeakSingleton):
                         f"[PIP] 尝试使用策略：{strategy.strategy_name} 安装依赖，"
                         f"命令：{' '.join(strategy.safe_log_command)}"
                     )
+                    cls.__normalize_package_install_permissions()
                     success, message = SystemUtils.execute_with_subprocess(
                         strategy.command,
                         env=strategy.env,
                         safe_command=strategy.safe_log_command,
                     )
+                    cls.__normalize_package_install_permissions()
                     if success:
                         logger.debug(f"[PIP] 策略：{strategy.strategy_name} 安装依赖成功，输出：{message}")
                         health_ok, health_message = cls.__run_runtime_healthcheck()

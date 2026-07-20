@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import pickle
@@ -5,9 +7,14 @@ import threading
 from typing import Any, Optional, Generator, Tuple, AsyncGenerator, Union
 from urllib.parse import quote, unquote
 
-import redis
-from redis.asyncio import BlockingConnectionPool as AsyncBlockingConnectionPool
-from redis.asyncio import Redis
+try:
+    import redis
+    from redis.asyncio import BlockingConnectionPool as AsyncBlockingConnectionPool
+    from redis.asyncio import Redis
+except ModuleNotFoundError:
+    redis = None
+    AsyncBlockingConnectionPool = None
+    Redis = None
 
 from app.core.config import settings
 from app.log import logger
@@ -105,6 +112,8 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         """
         建立Redis连接
         """
+        if redis is None:
+            raise RuntimeError("redis client package is not installed")
         if self.client is not None:
             return
         client = None
@@ -368,6 +377,8 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         """
         建立异步Redis连接
         """
+        if redis is None or AsyncBlockingConnectionPool is None or Redis is None:
+            raise RuntimeError("redis client package is not installed")
         current_loop = asyncio.get_running_loop()
         connect_lock = self._get_connect_lock(current_loop)
         client = None

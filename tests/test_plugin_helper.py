@@ -821,6 +821,77 @@ class TestPluginHelper:
         assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
         assert "user:pass" not in " ".join(safe_command)
 
+    def test_pip_install_repairs_unreadable_metadata_before_healthcheck(self):
+        """Package metadata permissions are repaired before the runtime health check."""
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        calls = []
+
+        def fake_execute(_command, env=None, safe_command=None):
+            calls.append("install")
+            return True, "ok"
+
+        def fake_repair(root=None):
+            calls.append("repair-cache" if root else "repair-site")
+            return []
+
+        def fake_healthcheck():
+            calls.append("healthcheck")
+            return True, ""
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_file = Path(temp_dir) / "requirements.txt"
+            requirements_file.write_text("demo-package\n", encoding="utf-8")
+            with patch("app.helper.package._find_uv", return_value=None), \
+                    patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
+                    patch.object(PluginHelper, "_PluginHelper__run_runtime_healthcheck", side_effect=fake_healthcheck), \
+                    patch("app.helper.plugin.normalize_unreadable_site_package_files", side_effect=fake_repair), \
+                    patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+
+        assert success
+        assert message == "ok"
+        assert calls == [
+            "repair-site",
+            "repair-cache",
+            "install",
+            "repair-site",
+            "repair-cache",
+            "healthcheck",
+        ]
+
+    def test_pip_install_normalizes_plugin_wheels_before_execution(self):
+        """Local plugin wheels are repaired before the installer reads them."""
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        normalized_roots = []
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            requirements_file = root / "requirements.txt"
+            requirements_file.write_text("demo-package\n", encoding="utf-8")
+            wheels_dir = root / "wheels"
+            wheels_dir.mkdir()
+
+            with patch("app.helper.package._find_uv", return_value=None), \
+                    patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
+                    patch.object(PluginHelper, "_PluginHelper__run_runtime_healthcheck", return_value=(True, "")), \
+                    patch("app.helper.plugin.normalize_wheel_archive_permissions",
+                          side_effect=lambda path: normalized_roots.append(Path(path)) or []), \
+                    patch("app.helper.plugin.normalize_unreadable_site_package_files", return_value=[]), \
+                    patch("app.helper.plugin.SystemUtils.execute_with_subprocess", return_value=(True, "ok")):
+                success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+
+        assert success
+        assert message == "ok"
+        assert wheels_dir in normalized_roots
+
     def test_pip_install_serializes_concurrent_calls(self):
         """
         验证多个依赖安装请求会复用同一把锁串行执行 pip。

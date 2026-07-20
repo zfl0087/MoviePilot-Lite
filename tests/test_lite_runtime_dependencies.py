@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -81,6 +82,27 @@ def test_compatibility_entry_only_delegates_to_runtime_requirements() -> None:
     ]
 
     assert lines == ["-r requirements.in"]
+
+
+def test_redis_helper_imports_without_optional_client_package(monkeypatch) -> None:
+    """Disk-cache plugins may import RedisHelper without restoring redis as a runtime dependency."""
+    real_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "redis" or name.startswith("redis."):
+            raise ModuleNotFoundError("redis is intentionally absent in Lite")
+        return real_import(name, *args, **kwargs)
+
+    module_path = PROJECT_ROOT / "app" / "helper" / "redis.py"
+    spec = importlib.util.spec_from_file_location("lite_optional_redis_helper", module_path)
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+
+    spec.loader.exec_module(module)
+
+    assert module.redis is None
+    with pytest.raises(RuntimeError, match="redis client package is not installed"):
+        module.RedisHelper()._connect()
 
 
 def test_historical_postgresql_setting_still_selects_sqlite(monkeypatch) -> None:

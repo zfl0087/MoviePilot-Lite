@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import os
+import site
+import stat
 import shutil
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -9,6 +12,79 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 PackageBackend = Literal["uv", "pip"]
+
+
+def normalize_unreadable_site_package_files(site_packages: Path | None = None) -> list[Path]:
+    """Restore read bits on malformed wheel files in the active venv.
+
+    Some third-party wheels contain package or ``.dist-info`` files with no
+    read bits. The installer can extract them successfully, but Python, ``uv``
+    and ``pip`` then fail while importing code or resolving dependencies.
+    """
+    roots = [site_packages] if site_packages is not None else [Path(path) for path in site.getsitepackages()]
+    repaired: list[Path] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*"), key=str):
+            try:
+                if path.is_symlink() or not path.is_file():
+                    continue
+                mode = path.stat().st_mode
+                permissions = stat.S_IMODE(mode)
+                if permissions & (stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH):
+                    continue
+                path.chmod(permissions | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+                repaired.append(path)
+            except OSError:
+                continue
+    return repaired
+
+
+def normalize_wheel_archive_permissions(wheels_root: Path) -> list[Path]:
+    """Rewrite wheels whose archive entries are not readable after extraction.
+
+    A malformed wheel can carry Unix mode ``000`` for ``RECORD`` and package
+    files. UV preserves those mode bits while extracting, then cannot read the
+    metadata it just installed. Normalize only affected archives.
+    """
+    root = Path(wheels_root)
+    if not root.is_dir():
+        return []
+
+    repaired: list[Path] = []
+    for wheel in sorted(root.rglob("*.whl"), key=str):
+        if wheel.is_symlink() or not wheel.is_file():
+            continue
+        temporary = wheel.with_name(f".{wheel.name}.permissions.tmp")
+        try:
+            with zipfile.ZipFile(wheel, "r") as source:
+                entries = source.infolist()
+                changed = False
+                for info in entries:
+                    unix_mode = info.external_attr >> 16
+                    mode = stat.S_IMODE(unix_mode)
+                    read_bits = stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
+                    if mode & read_bits:
+                        continue
+                    desired = 0o755 if info.filename.endswith("/") else 0o644
+                    normalized_mode = (unix_mode & ~0o777) | desired
+                    info.external_attr = (info.external_attr & 0xFFFF) | (normalized_mode << 16)
+                    changed = True
+                if not changed:
+                    continue
+
+                with zipfile.ZipFile(temporary, "w") as target:
+                    for info in entries:
+                        target.writestr(info, source.read(info))
+            temporary.replace(wheel)
+            repaired.append(wheel)
+        except (OSError, zipfile.BadZipFile, RuntimeError):
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return repaired
 
 
 @dataclass(frozen=True)

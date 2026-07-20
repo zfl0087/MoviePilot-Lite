@@ -332,6 +332,16 @@ Lite 基础镜像保留 `ffprobe`、固定版本 Rclone、Unar、Nginx、SSL/cro
 - 未覆盖：真实 115 授权/转存、Docker 双架构候选、资源指标和 Canary。
 - 已知限制：后端启动存在 `app.helper.sites` 数据库更新告警；Vite 开发服务器的已移除页面依赖扫描和重优化会导致开发验收不稳定；通知页面仍显示部分历史通知分类；仓库内 `dist/service.js` 直接运行受 `type=module` 与 CommonJS `require` 冲突影响，Docker 运行尚未验证。
 
+### 16.2 P115StrmHelper 安装与加载 Canary（2026-07-20）
+
+- 环境：飞牛 fnOS `linux/amd64` 隔离容器；镜像 `zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.1`；原版 MoviePilot 容器保持独立运行。
+- 对象：手动安装 `P115StrmHelper 2.8.62`，不预装插件、不在启动阶段自动下载插件。
+- 修复：安装前规范化插件本地 wheel 内不可读的 Unix 权限位，并在安装前后修复已解包文件和包缓存权限；保留 wheel 文件类型位。
+- Redis 边界：正式运行入口仍不包含 `redis` Python 包，也不启动 Redis 服务；`RedisHelper` 允许磁盘缓存插件在缺少可选客户端包时导入，只有显式选择 Redis 后端才报告客户端缺失。
+- 结果：插件安装接口成功；容器在确认 `redis` 包不存在后重启，日志记录 `加载插件：P115StrmHelper 版本：2.8.62`；插件表单 API 返回 200；`pip check` 检查 179 个包且无不兼容；Lite Canary 和并行原版容器均保持 healthy。
+- 未覆盖：真实 115 登录、分享链接转存、STRM 生成、消息渠道回传和媒体服务器刷新，因此本记录只证明“可安装并加载”，不把插件升级为完整工作流认证。
+- 回退：恢复 `/config/temp/hotfix-wheel-permissions-20260720/` 中的 helper 备份并重启 Canary；原版容器不受影响。
+
 ## 17. 文档维护规则
 
 - 每个 Lite 正式版本发布前更新当前版本矩阵。

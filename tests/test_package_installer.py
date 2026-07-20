@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import os
+import stat
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from app.helper.package import (
     PackageInstallRequest,
     build_package_install_env,
     build_package_install_strategies,
+    normalize_wheel_archive_permissions,
+    normalize_unreadable_site_package_files,
     redact_url,
 )
 
@@ -121,3 +128,54 @@ def test_redact_url_removes_userinfo_with_invalid_port():
         redact_url("https://user:pass@example.com:notaport/simple")
         == "https://example.com:notaport/simple"
     )
+
+
+def test_normalize_wheel_archive_permissions_repairs_unreadable_entries(tmp_path):
+    wheel = tmp_path / "demo-1.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for name, content in {
+            "demo/__init__.py": b"VALUE = 1\n",
+            "demo-1.0.dist-info/RECORD": b"",
+        }.items():
+            info = zipfile.ZipInfo(name)
+            info.create_system = 3
+            info.external_attr = (stat.S_IFREG | 0o200) << 16
+            archive.writestr(info, content)
+
+    repaired = normalize_wheel_archive_permissions(tmp_path)
+
+    assert repaired == [wheel]
+    with zipfile.ZipFile(wheel) as archive:
+        modes = {
+            info.filename: (info.external_attr >> 16) & 0o777
+            for info in archive.infolist()
+        }
+    assert modes["demo/__init__.py"] & 0o444
+    assert modes["demo-1.0.dist-info/RECORD"] & 0o444
+    with zipfile.ZipFile(wheel) as archive:
+        assert all(
+            stat.S_IFMT(info.external_attr >> 16) == stat.S_IFREG
+            for info in archive.infolist()
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows chmod cannot reproduce Linux mode 000")
+def test_normalize_unreadable_site_package_files_repairs_package_and_metadata_files(tmp_path):
+    dist_info = tmp_path / "demo-1.0.dist-info"
+    dist_info.mkdir()
+    metadata = dist_info / "METADATA"
+    metadata.write_text("Name: demo\nVersion: 1.0\n", encoding="utf-8")
+    metadata.chmod(0)
+    package_dir = tmp_path / "demo"
+    package_dir.mkdir()
+    package_init = package_dir / "__init__.py"
+    package_init.write_text("VERSION = '1.0'\n", encoding="utf-8")
+    package_init.chmod(0)
+
+    repaired = normalize_unreadable_site_package_files(tmp_path)
+
+    assert repaired == [metadata, package_init]
+    assert metadata.stat().st_mode & stat.S_IRUSR
+    assert package_init.stat().st_mode & stat.S_IRUSR
+    assert metadata.read_text(encoding="utf-8").startswith("Name: demo")
+    assert package_init.read_text(encoding="utf-8").startswith("VERSION")
