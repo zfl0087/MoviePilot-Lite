@@ -31,6 +31,8 @@ docker.io/zfl0087/moviepilot-lite:latest
 | 容器端口 | `3000` |
 | NAS 配置目录 | `/volume1/docker/moviepilot-lite/config`（按实际路径修改） |
 | 容器目录 | `/config` |
+| NAS 媒体目录 | `/volume1/media`（按实际路径修改） |
+| 容器媒体目录 | `/media` |
 
 添加环境变量：
 
@@ -72,9 +74,10 @@ services:
       SUPERUSER_PASSWORD: "请改成自己的强密码"
     volumes:
       - /volume1/docker/moviepilot-lite/config:/config
+      - /volume1/media:/media
 ```
 
-修改配置目录、UID、GID 和密码后执行：
+修改配置目录、媒体目录、UID、GID 和密码后执行。115 网盘STRM助手的整理、STRM 或媒体库目录请填写容器内路径（例如 `/media/电影`），不要填写 NAS 宿主机路径。
 
 ```bash
 docker compose up -d
