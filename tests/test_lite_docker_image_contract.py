@@ -85,6 +85,22 @@ REQUIRED_DOCKERIGNORE_PATHS = {
     "skills/",
 }
 
+REQUIRED_SENSITIVE_DOCKERIGNORE_PATTERNS = {
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "*.p12",
+    "*.pfx",
+    "*.jks",
+    "*.keystore",
+    "*.credentials",
+    "credentials.*",
+    "secrets.*",
+    "*.bak",
+    "*.backup",
+}
+
 BLOCKED_SOURCE_MODULE_PREFIXES = (
     "app.agent",
     "app.workflow",
@@ -262,6 +278,13 @@ def test_disabled_source_roots_are_excluded_from_build_context() -> None:
     entries = _dockerignore_entries()
 
     assert REQUIRED_DOCKERIGNORE_PATHS <= entries
+
+
+def test_sensitive_local_files_are_excluded_from_build_context() -> None:
+    """本地密钥、凭据和配置备份不得进入 Docker 构建上下文。"""
+    entries = _dockerignore_entries()
+
+    assert REQUIRED_SENSITIVE_DOCKERIGNORE_PATTERNS <= entries
 
 
 def test_retained_entries_import_when_excluded_source_is_physically_missing(

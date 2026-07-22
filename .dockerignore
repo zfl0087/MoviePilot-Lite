@@ -67,6 +67,21 @@ logs/
 tmp/
 temp/
 
+# Local secrets, credentials, and configuration backups
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.credentials
+credentials.*
+secrets.*
+*.bak
+*.backup
+
 # Database
 *.db
 *.sqlite
