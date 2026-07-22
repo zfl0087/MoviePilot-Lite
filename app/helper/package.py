@@ -15,17 +15,40 @@ PackageBackend = Literal["uv", "pip"]
 
 
 def normalize_unreadable_site_package_files(site_packages: Path | None = None) -> list[Path]:
-    """Restore read bits on malformed wheel files in the active venv.
+    """Restore access bits on malformed wheel directories and files.
 
-    Some third-party wheels contain package or ``.dist-info`` files with no
-    read bits. The installer can extract them successfully, but Python, ``uv``
-    and ``pip`` then fail while importing code or resolving dependencies.
+    Some third-party wheels contain package directories or ``.dist-info``
+    files with no access bits. The installer can extract them successfully,
+    but Python, ``uv`` and ``pip`` then fail while importing code or resolving
+    dependencies.
     """
     roots = [site_packages] if site_packages is not None else [Path(path) for path in site.getsitepackages()]
     repaired: list[Path] = []
+
+    def restore_directory_access(path: Path) -> bool:
+        try:
+            if path.is_symlink() or not path.is_dir():
+                return False
+            permissions = stat.S_IMODE(path.stat().st_mode)
+            required = stat.S_IRUSR | stat.S_IXUSR
+            if permissions & required != required:
+                path.chmod(permissions | required)
+                repaired.append(path)
+            return True
+        except OSError:
+            return False
+
     for root in roots:
-        if not root.is_dir():
+        if not restore_directory_access(root):
             continue
+
+        for current_root, dirnames, _ in os.walk(root, topdown=True, followlinks=False):
+            traversable: list[str] = []
+            for dirname in sorted(dirnames):
+                if restore_directory_access(Path(current_root) / dirname):
+                    traversable.append(dirname)
+            dirnames[:] = traversable
+
         for path in sorted(root.rglob("*"), key=str):
             try:
                 if path.is_symlink() or not path.is_file():

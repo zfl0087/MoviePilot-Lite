@@ -863,6 +863,51 @@ class TestPluginHelper:
             "healthcheck",
         ]
 
+    def test_uv_record_permission_failure_falls_back_to_real_pip(self):
+        """A UV RECORD permission failure must reach the independent pip backend."""
+        try:
+            from app.helper.plugin import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        install_commands = []
+
+        def fake_execute(command, env=None, safe_command=None):
+            install_commands.append(command)
+            if command[1:3] == ["pip", "install"]:
+                return False, "RECORD file is invalid: Permission denied (os error 13)"
+            if command[1:4] == ["-m", "pip", "install"]:
+                return True, "pip fallback succeeded"
+            raise AssertionError(f"unexpected command: {command}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            requirements_file = root / "requirements.txt"
+            requirements_file.write_text("demo-package\n", encoding="utf-8")
+            uv_bin = root / "venv" / "bin" / "uv"
+            uv_bin.parent.mkdir(parents=True)
+            uv_bin.write_text("", encoding="utf-8")
+
+            with patch("app.helper.package._find_uv", return_value=uv_bin), \
+                    patch.object(PluginHelper, "_PluginHelper__get_protected_runtime_packages", return_value={}), \
+                    patch.object(PluginHelper, "_PluginHelper__run_runtime_healthcheck", return_value=(True, "")), \
+                    patch.object(
+                        PluginHelper,
+                        "_PluginHelper__repair_if_runtime_broken",
+                        side_effect=AssertionError("pip fallback must run before runtime repair"),
+                    ), \
+                    patch("app.helper.plugin.normalize_unreadable_site_package_files", return_value=[]), \
+                    patch("app.helper.plugin.settings.PIP_PROXY", ""), \
+                    patch("app.helper.plugin.settings.PROXY_HOST", ""), \
+                    patch("app.helper.plugin.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
+                success, message = PluginHelper.pip_install_with_fallback(requirements_file)
+
+        assert success
+        assert message == "pip fallback succeeded"
+        assert len(install_commands) == 2
+        assert install_commands[0][:3] == [str(uv_bin), "pip", "install"]
+        assert install_commands[1][1:4] == ["-m", "pip", "install"]
+
     def test_pip_install_normalizes_plugin_wheels_before_execution(self):
         """Local plugin wheels are repaired before the installer reads them."""
         try:

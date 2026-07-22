@@ -179,3 +179,21 @@ def test_normalize_unreadable_site_package_files_repairs_package_and_metadata_fi
     assert package_init.stat().st_mode & stat.S_IRUSR
     assert metadata.read_text(encoding="utf-8").startswith("Name: demo")
     assert package_init.read_text(encoding="utf-8").startswith("VERSION")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows chmod cannot reproduce Linux mode 000")
+def test_normalize_unreadable_site_package_files_repairs_directories_before_files(tmp_path):
+    cache_dir = tmp_path / "uv" / "wheels-v6" / "pypi" / "demo"
+    cache_dir.mkdir(parents=True)
+    metadata = cache_dir / "demo.msgpack"
+    metadata.write_text("metadata", encoding="utf-8")
+    metadata.chmod(0)
+    cache_dir.chmod(0)
+
+    repaired = normalize_unreadable_site_package_files(tmp_path)
+
+    assert cache_dir in repaired
+    assert metadata in repaired
+    assert cache_dir.stat().st_mode & stat.S_IXUSR
+    assert metadata.stat().st_mode & stat.S_IRUSR
+    assert metadata.read_text(encoding="utf-8") == "metadata"

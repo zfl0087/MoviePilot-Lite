@@ -1556,7 +1556,10 @@ class PluginHelper(metaclass=WeakSingleton):
                 loaded_modules_before_install = set(sys.modules.keys())
                 # 遍历策略进行安装
                 last_error = ""
+                skip_remaining_uv_strategies = False
                 for strategy in strategies:
+                    if skip_remaining_uv_strategies and strategy.backend == "uv":
+                        continue
                     logger.debug(
                         f"[PIP] 尝试使用策略：{strategy.strategy_name} 安装依赖，"
                         f"命令：{' '.join(strategy.safe_log_command)}"
@@ -1602,6 +1605,18 @@ class PluginHelper(metaclass=WeakSingleton):
                         return True, message
 
                     last_error = message
+                    normalized_error = message.lower()
+                    if (
+                            strategy.backend == "uv"
+                            and "record file is invalid" in normalized_error
+                            and "permission denied" in normalized_error
+                    ):
+                        skip_remaining_uv_strategies = True
+                        logger.warning(
+                            "[PIP] UV encountered an unreadable wheel RECORD; "
+                            "falling back to the independent pip backend"
+                        )
+                        continue
                     repair_ok, repair_message = cls.__repair_if_runtime_broken(
                         constraints_file if protected_packages else None
                     )
