@@ -20,14 +20,14 @@
 
 | 远程 | 地址 | 权限 |
 |---|---|---|
-| `origin` | `https://github.com/zfl0087/MoviePilot-Lite.git` | 私有 Lite 仓库，可推送 |
+| `origin` | `https://github.com/zfl0087/MoviePilot-Lite.git` | Lite 公开源码仓库，可推送 |
 | `upstream` | `https://github.com/jxxghp/MoviePilot.git` | 官方仓库，只读 |
 
 ### 2.2 前端
 
 | 远程 | 地址 | 权限 |
 |---|---|---|
-| `origin` | `https://github.com/zfl0087/MoviePilot-Lite-Frontend.git` | 私有 Lite 仓库，可推送 |
+| `origin` | `https://github.com/zfl0087/MoviePilot-Lite-Frontend.git` | Lite 公开源码仓库，可推送 |
 | `upstream` | `https://github.com/jxxghp/MoviePilot-Frontend.git` | 官方仓库，只读 |
 
 ### 2.3 插件
@@ -77,7 +77,7 @@ flowchart LR
     D --> E["冲突与能力边界审查"]
     E --> F["后端、前端和集成测试"]
     F --> G["构建私有 GHCR 候选镜像"]
-    G --> H["按摘要同步到私有 Docker Hub"]
+    G --> H["按摘要同步到公开 Docker Hub"]
     H --> I["Canary 真实验证"]
     I --> J["用户批准"]
     J --> K["合入 main 并发布固定版本"]
@@ -93,7 +93,7 @@ flowchart LR
 6. 重新验证 Lite 能力门控及插件兼容性。
 7. 分别通过后端、前端和集成测试。
 8. 合入 `lite` 并构建固定提交对应的候选镜像。
-9. 按候选标签和 GHCR 摘要将同一双架构镜像同步到私有 Docker Hub，供 NAS 拉取。
+9. 按候选标签、GHCR 摘要及前后端完整提交，将同一双架构镜像同步到公开 Docker Hub。
 10. 在 Canary 实例完成真实115工作流验证。
 11. 获得用户明确批准后，将同一候选内容推进到 `main` 并发布正式版本。
 
@@ -224,18 +224,19 @@ flowchart LR
 
 Canary 使用的真实令牌只保存在实例安全配置中，不写入仓库、构建日志、测试产物或 GitHub Actions Secrets。
 
-## 14. 私有镜像与发布
+## 14. 公开镜像与发布
 
-- GHCR 是候选镜像的可信源和构建产物主记录；私有 Docker Hub `zfl0087/moviepilot-lite` 仅作为 NAS 拉取镜像的分发镜像。
-- Docker Hub 同步只能由维护者手动触发，且必须同时提供不可变候选标签和预期 GHCR 摘要。
+- GHCR 是候选镜像的可信源和构建产物主记录；公开 Docker Hub `zfl0087/moviepilot-lite` 是用户拉取镜像的分发仓库。
+- Docker Hub 同步只能由维护者手动触发，且必须同时提供不可变候选标签、预期 GHCR 摘要及 Lite 前后端完整提交。
 - 同步前必须核对 GHCR 实际摘要；Docker Hub 目标标签已存在时，只允许相同摘要幂等通过，不得覆盖指向不同摘要的标签。
 - GitHub Actions 使用仓库 Secrets `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN` 登录 Docker Hub；CI Token 仅授予 Read & Write，不授予 Delete。
-- NAS 使用与 CI 分离的 Docker Hub Read-only Token。Token 不得写入源码、日志、测试产物、文档或聊天记录。
+- 公开镜像的普通拉取不需要 Docker Hub Token。CI Token 不得写入源码、日志、测试产物或文档。
 - 不发布或部署浮动的 `latest`。
 - 候选和正式镜像均使用完整版本标签。
 - 生产 Compose 固定具体版本，建议同时记录镜像摘要。
-- 正式 Release 必须标明非官方 MoviePilot Lite 私有构建，并保留 GPLv3、版权和修改说明。
-- 向可信对象分发镜像时，同时提供该镜像对应的完整源码和版本追溯信息。
+- RC 只能作为 `preview` 和 GitHub Pre-release；只有 Canary 状态完整且所有稳定门禁通过后才能发布 `stable`。
+- Release 必须标明非官方 MoviePilot Lite 社区构建，并保留 GPLv3、版权和修改说明。
+- 每个公开镜像必须同时提供对应的完整源码、前后端提交、官方基线、平台和镜像摘要。
 
 官方现有构建工作流会针对 `v2` 发布 `latest`、使用 Docker Hub并删除后重建 Release，因此不得原样作为 Lite 发布流程。Lite 工作流必须单独设计、审查和批准。
 

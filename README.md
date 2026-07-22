@@ -1,8 +1,8 @@
 # MoviePilot Lite
 
-> **非官方、私有、非商业的 MoviePilot v2 精简构建。**
+> **非官方、社区维护的 MoviePilot v2 网盘精简构建。**
 >
-> **当前状态：基础设计阶段，尚无可部署版本或可用镜像。**
+> **当前状态：`v2.14.5-lite.1-rc.7` 公开预览候选；部分真实 115 工作流尚未完成验收。**
 
 MoviePilot Lite 不是 MoviePilot 官方版本，不由 MoviePilot 官方团队维护或提供支持。请勿将 Lite 特有问题提交到官方项目。
 
@@ -72,11 +72,16 @@ MoviePilot Lite 不是 MoviePilot 官方版本，不由 MoviePilot 官方团队�
 
 ## 安装
 
-MoviePilot Lite 尚未形成首个可部署版本。
+公开预览镜像：
 
-目前没有可用的 Lite 镜像、Compose 示例或安装命令。请勿把 MoviePilot 官方镜像当作 Lite 镜像使用。
+```text
+docker.io/zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.7
+sha256:f408a816d0a0ec15e175477f9bfc4d80278c3455aa2dbfa06b4fdd83e7a01420
+```
 
-首个候选版本必须先通过后端、前端、Docker 和兼容性测试，再在隔离 Canary 实例完成真实115转存、整理、通知和媒体服务器刷新验证。正式安装说明只会使用固定版本号和镜像摘要，不使用浮动的 `latest`。
+安装前必须备份 `/config`，固定完整版本标签并核对摘要；不得用 `latest`，也不得把管理端口直接暴露到公网。P115StrmHelper `2.8.62` 需要通过插件市场手动安装。
+
+完整的拉取、部署、升级、回退步骤及未验证项目见 [公开发布与安装说明](docs/PUBLIC_RELEASE.md)。
 
 ## 兼容范围
 
@@ -95,6 +100,8 @@ MoviePilot Lite 尚未形成首个可部署版本。
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：能力配置、导入门控、前后端边界和构建裁剪。
 - [docs/UPSTREAM_SYNC.md](docs/UPSTREAM_SYNC.md)：上游同步、分支、测试、候选发布和回退流程。
 - [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)：配置、数据库、API、插件和部署兼容矩阵。
+- [docs/PUBLIC_RELEASE.md](docs/PUBLIC_RELEASE.md)：公开镜像的固定版本、安装、升级和回退说明。
+- [SECURITY.md](SECURITY.md)：安全问题报告范围和敏感信息处理规则。
 - [AGENTS.md](AGENTS.md)：AI代理和项目实施规则。
 
 ## 上游与版本
@@ -118,12 +125,12 @@ Lite 版本格式为 `v<官方版本>-lite.<修订号>`，例如 `v2.14.5-lite.1
 
 ## 分发与许可证
 
-MoviePilot Lite 只用于个人、家庭及少量可信对象之间的非公开、非商业分享，不建立公众下载渠道，不作为 SaaS 或商业产品运营。
+MoviePilot Lite 是非官方社区构建，不代表 MoviePilot 官方，也不由官方团队提供支持。维护者目前不销售支持、不运营 SaaS，也不公开托管用户实例。
 
 - 本项目继承并保留上游的 GNU General Public License v3.0、版权声明和修改记录。
 - 向他人分发镜像或二进制时，必须同时提供与该版本对应的完整源码和版本追溯信息。
-- 不接受捐赠，不提供收费服务，也不允许将本项目用于商业用途或违法活动。
-- MoviePilot 官方明确不建议规避或修改用户认证机制后公开分发。MoviePilot Lite 移除了 PT 站点用户认证，因此修改、私下分发和使用产生的责任由 Lite 修改者、分发者和使用者自行承担。
+- 维护者的运营选择不限制接收者依据 GPLv3 使用、修改、再分发或收费分发的权利。
+- MoviePilot Lite 移除了 PT 站点用户认证；修改、分发和使用产生的责任由相应修改者、分发者和使用者承担。
 - 本项目不对第三方插件、外部 API、网盘服务或用户数据损失承担保证责任，部署前必须备份重要数据。
 
 完整许可证见 [LICENSE](LICENSE)。

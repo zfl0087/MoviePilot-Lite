@@ -1,8 +1,8 @@
 # MoviePilot Lite — Project Brief
 
-> 状态：已建立固定能力、前端构建与 Docker 产物合同；双架构候选和 Canary 待验证
-> 基线日期：2026-07-17  
-> 项目性质：基于 MoviePilot v2 的非官方私有精简构建
+> 状态：首个公开预览候选 `v2.14.5-lite.1-rc.7` 已完成容器、登录和插件安装/导航验证
+> 基线日期：2026-07-22
+> 项目性质：基于 MoviePilot v2 的非官方社区精简构建
 
 ## 1. 项目概述
 
@@ -13,8 +13,9 @@ MoviePilot Lite 是面向网盘媒体管理场景的 MoviePilot 精简版本。�
 ## 2. 目标用户与分发范围
 
 - 主要用于个人和家庭自托管。
-- 允许向少量明确、可信的对象私下分享。
-- 不公开发行，不提供公众下载，不作为 SaaS 或商业产品运营。
+- 允许公开提供固定版本的镜像、完整对应源码和版本追溯记录。
+- 不代表 MoviePilot 官方，不由官方团队提供 Lite 支持。
+- 维护者不运营 SaaS、不公开托管用户实例；该运营选择不构成 GPLv3 附加限制。
 - 向他人分发镜像时，同时提供与镜像版本对应的完整源码，保留 GPLv3 许可证、版权声明和修改记录。
 - 每个版本必须能够追溯到对应的 MoviePilot 官方提交和 MoviePilot Lite 源码提交。
 
@@ -129,9 +130,9 @@ P115StrmHelper（115网盘STRM助手）是目标 115 工作流的必装插件，
 - 官方后端上游：`jxxghp/MoviePilot`，跟踪 `v2`。
 - 官方前端上游：`jxxghp/MoviePilot-Frontend`，跟踪 `v2`。
 - 官方插件上游：`jxxghp/MoviePilot-Plugins`。
-- 私有后端仓库：`zfl0087/MoviePilot-Lite`。
-- 私有前端仓库：`zfl0087/MoviePilot-Lite-Frontend`。
-- 不使用 GitHub 的公开 Fork 关系；使用私有镜像仓库并配置官方仓库为上游。
+- Lite 后端仓库：`zfl0087/MoviePilot-Lite`。
+- Lite 前端仓库：`zfl0087/MoviePilot-Lite-Frontend`。
+- 不使用 GitHub 的 Fork 关系；使用独立仓库并配置官方仓库为只读上游。
 - 上游稳定版本到达后，自动同步、测试并构建候选镜像。
 - 测试失败时停止发布，不让运行实例自动盲目升级。
 - 候选镜像先在 canary 实例真实验证，再由用户手动升级其他实例。
@@ -159,7 +160,7 @@ CI 使用模拟服务验证通用流程；真实 115 Token 不进入 GitHub Acti
 - 不承诺兼容所有官方或第三方插件。
 - 不为已移除能力保留完整核心，仅为了兼容个别插件而恢复相关依赖。
 - 不维护 Windows 原生、群晖 SPK 或本地 CLI 安装包。
-- 不公开发布或建立公共下载渠道。
+- 不公开托管用户实例或扩大为通用 PT、下载、订阅产品。
 - 不在首版中为所有网盘进行真实账号验收。
 
 ## 11. 当前基线与状态
@@ -172,7 +173,9 @@ CI 使用模拟服务验证通用流程；真实 115 Token 不进入 GitHub Acti
 | MoviePilot 前端 | `v2` | `435e9ecfdd4febf791fd581b3be9233816cebf7f` |
 | MoviePilot 官方插件 | `main` | `4e11007980fd7703302adfa4474e494b64244b5c` |
 
-两个私有仓库已经创建，并且 Codex GitHub App 仅获准访问这两个仓库。后端 `lite` 分支已建立固定能力配置、API 路由和模块发现的导入前门控；当前已在运行时移除 `AUTH_SITE`、PT 在线认证、Agent、Workflow、Redis、订阅、搜索和下载器的启动链路。管理员登录、`API_TOKEN` 和资源 Token 固定使用本地等级 1，115 OAuth/API 保持独立。启动期只装配模块、事件、已安装插件、Lite Scheduler、Monitor、Lite Command 和条件 DoH；不会自动同步插件、安装插件依赖或上报使用统计。内建消息命令固定为 `/mediaserver_sync`、`/clear_cache`、`/restart`、`/version`，普通 115 分享链接继续广播给手动安装的 P115StrmHelper。Scheduler 只保留媒体服务器同步、公共维护、缓存清理、条件数据清理、条件主动 GC 和兼容插件任务。正式 Python 运行入口已移除 24 个 Agent/LLM、PT/下载器、浏览器、Redis/PostgreSQL 和 Windows 托盘专属根依赖；官方禁用源码测试所需包只保留在开发入口。干净运行环境已证明禁止包真实缺失时保留入口和正常生命周期可运行。Docker 定义已使用系统包允许集合，移除浏览器、`ffmpeg`、预装插件、PT 资源和官方原地更新器，保留 `ffprobe`、Rclone、Unar、Nginx/SSL/cron、普通重启及空插件目录；管理员升级 API 固定提示部署受控 Lite 候选镜像。前端已消费后端 manifest v2，路由、菜单、PWA、Service Worker、依赖和产物门禁已完成；前端目标/全量 Lite 测试、类型检查、覆盖率、构建和产物扫描均有本地证据。后端 manifest 目标测试和 pylint 也已通过，但 Windows 全量官方测试仍有与本变更无关的 29 个基线失败（主要是 GBK 源码读取、禁用能力和平台特定用例）。当前尚未完成双架构候选构建、资源指标、配对后端导航验收或真实 115 Canary，也未构建或发布 Lite 镜像；前后端实现提交仍 pending。
+Lite 后端提交 `429dcd7478cac731e3484c21b1f1fff4412d28c0` 与前端提交 `4aca2de078cae65b1e83af86a7b4abee04987d03` 已构建为 `linux/amd64`、`linux/arm64` 双架构候选。公开预览镜像固定为 `docker.io/zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.7`，摘要为 `sha256:f408a816d0a0ec15e175477f9bfc4d80278c3455aa2dbfa06b4fdd83e7a01420`。
+
+Canary 已验证容器健康、管理员登录、P115StrmHelper `2.8.62` 手动安装与加载，以及插件侧栏导航；并行原版 MoviePilot 容器保持独立运行。尚未验证真实 115 分享链接转存、完整 STRM 流程、消息渠道回传和媒体服务器刷新，因此 rc.7 只能作为 `preview`，不能标记为稳定版。资源指标也仍待独立测量。
 
 ## 12. 项目协作规则
 

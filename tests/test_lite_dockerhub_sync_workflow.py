@@ -24,8 +24,13 @@ def test_sync_workflow_requires_immutable_source() -> None:
 
     assert "candidate_version:" in workflow
     assert "source_digest:" in workflow
+    assert "backend_sha:" in workflow
+    assert "frontend_sha:" in workflow
     assert "^v[0-9]+\\.[0-9]+\\.[0-9]+-lite\\.[0-9]+-rc\\.[0-9]+$" in workflow
     assert "^sha256:[0-9a-f]{64}$" in workflow
+    assert "^[0-9a-f]{40}$" in workflow
+    assert "backend_sha=$BACKEND_SHA" in workflow
+    assert "frontend_sha=$FRONTEND_SHA" in workflow
 
 
 def test_sync_workflow_uses_private_registry_credentials() -> None:
