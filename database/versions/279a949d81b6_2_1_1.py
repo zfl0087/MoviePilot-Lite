@@ -6,8 +6,6 @@ Create Date: 2025-02-14 19:02:24.989349
 
 """
 
-from app.chain.torrents import TorrentsChain
-
 # revision identifiers, used by Alembic.
 revision = '279a949d81b6'
 down_revision = 'ca5461f314f2'
@@ -16,8 +14,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 清理一次缓存
-    TorrentsChain().clear_torrents()
+    """Lite 已移除种子缓存，历史清理迁移无需执行。"""
+    pass
 
 
 def downgrade() -> None:
