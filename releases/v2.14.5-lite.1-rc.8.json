@@ -1,0 +1,48 @@
+{
+  "release_version": "v2.14.5-lite.1-rc.8",
+  "channel": "default",
+  "unofficial": true,
+  "license": "GPL-3.0-only",
+  "official": {
+    "backend_version": "v2.14.5",
+    "backend_sha": "8b5524a321c940f337873cefa54ba6a58462f9a4",
+    "frontend_version": "v2.14.5",
+    "frontend_sha": "435e9ecfdd4febf791fd581b3be9233816cebf7f"
+  },
+  "lite": {
+    "backend_sha": "81509ecc9e9ab09375f9b7745409a23585a5fe09",
+    "frontend_sha": "4aca2de078cae65b1e83af86a7b4abee04987d03",
+    "capability_profile_version": 2
+  },
+  "image": {
+    "repository": "docker.io/zfl0087/moviepilot-lite",
+    "tag": "v2.14.5-lite.1-rc.8",
+    "digest": "sha256:f7acb73bd2abf510bac42a09838d3f91b558e4d11ab8dab4d438610b24b88d34",
+    "platforms": ["linux/amd64", "linux/arm64"],
+    "default_tag": "latest"
+  },
+  "plugin": {
+    "id": "P115StrmHelper",
+    "version": "2.8.62",
+    "installation": "manual"
+  },
+  "canary": {
+    "date": "2026-07-22",
+    "status": "verified",
+    "verified": [
+      "container-health",
+      "admin-login",
+      "plugin-install-load",
+      "plugin-sidebar-navigation",
+      "real-115-share-transfer",
+      "complete-strm-flow",
+      "message-channel-return",
+      "media-server-refresh"
+    ],
+    "not_verified": []
+  },
+  "rollback": {
+    "previous_version": "v2.14.5-lite.1-rc.7",
+    "config_backup_required": true
+  }
+}

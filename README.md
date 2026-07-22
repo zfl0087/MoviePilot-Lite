@@ -2,7 +2,7 @@
 
 > **非官方、社区维护的 MoviePilot v2 网盘精简构建。**
 >
-> **当前状态：`v2.14.5-lite.1-rc.7` 公开预览候选；部分真实 115 工作流尚未完成验收。**
+> **当前状态：`v2.14.5-lite.1-rc.8` 已完成核心工作流验收；Docker Hub `latest` 指向此版本。**
 
 MoviePilot Lite 不是 MoviePilot 官方版本，不由 MoviePilot 官方团队维护或提供支持。请勿将 Lite 特有问题提交到官方项目。
 
@@ -72,16 +72,15 @@ MoviePilot Lite 不是 MoviePilot 官方版本，不由 MoviePilot 官方团队�
 
 ## 安装
 
-公开预览镜像：
+默认安装镜像：
 
 ```text
-docker.io/zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.7
-sha256:f408a816d0a0ec15e175477f9bfc4d80278c3455aa2dbfa06b4fdd83e7a01420
+docker.io/zfl0087/moviepilot-lite:latest
 ```
 
-安装前必须备份 `/config`，固定完整版本标签并核对摘要；不得用 `latest`，也不得把管理端口直接暴露到公网。P115StrmHelper `2.8.62` 需要通过插件市场手动安装。
+当前固定版本为 `v2.14.5-lite.1-rc.8@sha256:f7acb73bd2abf510bac42a09838d3f91b558e4d11ab8dab4d438610b24b88d34`。安装前必须备份 `/config`；回退或复现问题时请使用固定版本，而不要依赖 `latest`。不得把管理端口直接暴露到公网。P115StrmHelper `2.8.62` 需要通过插件市场手动安装。
 
-完整的拉取、部署、升级、回退步骤及未验证项目见 [公开发布与安装说明](docs/PUBLIC_RELEASE.md)。
+新手可直接查看 [Docker 安装教程](docs/DOCKER_INSTALL.md)；完整的镜像校验、升级、回退步骤及未验证项目见 [公开发布与安装说明](docs/PUBLIC_RELEASE.md)。
 
 ## 兼容范围
 
@@ -100,6 +99,7 @@ sha256:f408a816d0a0ec15e175477f9bfc4d80278c3455aa2dbfa06b4fdd83e7a01420
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：能力配置、导入门控、前后端边界和构建裁剪。
 - [docs/UPSTREAM_SYNC.md](docs/UPSTREAM_SYNC.md)：上游同步、分支、测试、候选发布和回退流程。
 - [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)：配置、数据库、API、插件和部署兼容矩阵。
+- [docs/DOCKER_INSTALL.md](docs/DOCKER_INSTALL.md)：NAS 图形界面与 Docker Compose 快速安装教程。
 - [docs/PUBLIC_RELEASE.md](docs/PUBLIC_RELEASE.md)：公开镜像的固定版本、安装、升级和回退说明。
 - [SECURITY.md](SECURITY.md)：安全问题报告范围和敏感信息处理规则。
 - [AGENTS.md](AGENTS.md)：AI代理和项目实施规则。

@@ -2,14 +2,14 @@
 
 ## 1. 发布性质
 
-MoviePilot Lite 是非官方社区构建，不代表 MoviePilot 官方，也不由官方团队提供 Lite 支持。当前版本是公开预览版，适合在备份后的个人或家庭自托管环境中测试，不应作为已经完成全部 115 工作流验收的稳定版。
+MoviePilot Lite 是非官方社区构建，不代表 MoviePilot 官方，也不由官方团队提供 Lite 支持。当前默认镜像已完成核心 115 工作流验收，适合个人或家庭自托管环境使用；升级前仍应备份 `/config`，并保留固定版本用于回退。
 
 ## 2. 固定版本
 
 ```text
-image=docker.io/zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.7
-digest=sha256:f408a816d0a0ec15e175477f9bfc4d80278c3455aa2dbfa06b4fdd83e7a01420
-backend=429dcd7478cac731e3484c21b1f1fff4412d28c0
+image=docker.io/zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.8
+digest=sha256:f7acb73bd2abf510bac42a09838d3f91b558e4d11ab8dab4d438610b24b88d34
+backend=81509ecc9e9ab09375f9b7745409a23585a5fe09
 frontend=4aca2de078cae65b1e83af86a7b4abee04987d03
 official_backend=8b5524a321c940f337873cefa54ba6a58462f9a4
 official_frontend=435e9ecfdd4febf791fd581b3be9233816cebf7f
@@ -20,9 +20,9 @@ platforms=linux/amd64,linux/arm64
 
 - [MoviePilot-Lite 后端](https://github.com/zfl0087/MoviePilot-Lite)
 - [MoviePilot-Lite-Frontend 前端](https://github.com/zfl0087/MoviePilot-Lite-Frontend)
-- 机器可读记录：`releases/v2.14.5-lite.1-rc.7.json`
+- 机器可读记录：`releases/v2.14.5-lite.1-rc.8.json`
 
-不得使用 `latest`。版本标签和摘要必须同时保存，不能只记录镜像名称。
+`docker.io/zfl0087/moviepilot-lite:latest` 与以上固定版本指向同一摘要，可作为默认安装镜像。版本标签和摘要必须同时保存；回退和故障复现不得依赖 `latest`。
 
 ## 3. 安装前准备
 
@@ -37,16 +37,16 @@ platforms=linux/amd64,linux/arm64
 按摘要拉取：
 
 ```bash
-docker pull docker.io/zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.7@sha256:f408a816d0a0ec15e175477f9bfc4d80278c3455aa2dbfa06b4fdd83e7a01420
+docker pull docker.io/zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.8@sha256:f7acb73bd2abf510bac42a09838d3f91b558e4d11ab8dab4d438610b24b88d34
 ```
 
 核对本地摘要：
 
 ```bash
-docker image inspect docker.io/zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.7 --format '{{json .RepoDigests}}'
+docker image inspect docker.io/zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.8 --format '{{json .RepoDigests}}'
 ```
 
-输出应包含本页记录的 `sha256:f408...a01420` 摘要。
+输出应包含本页记录的 `sha256:f7ac...8d34` 摘要。
 
 ## 5. Compose 示例
 
@@ -55,7 +55,7 @@ docker image inspect docker.io/zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.7 --for
 ```yaml
 services:
   moviepilot-lite:
-    image: docker.io/zfl0087/moviepilot-lite:v2.14.5-lite.1-rc.7@sha256:f408a816d0a0ec15e175477f9bfc4d80278c3455aa2dbfa06b4fdd83e7a01420
+    image: docker.io/zfl0087/moviepilot-lite:latest
     container_name: moviepilot-lite
     restart: unless-stopped
     ports:
@@ -73,20 +73,16 @@ services:
 
 ## 6. 115网盘STRM助手
 
-P115StrmHelper 不包含在核心镜像中，必须在插件市场手动安装。本预览版只记录已验证的 `P115StrmHelper 2.8.62`，不要自动追随未验证的新版本。
+P115StrmHelper 不包含在核心镜像中，必须在插件市场手动安装。默认镜像记录已验证的 `P115StrmHelper 2.8.62`，不要自动追随未验证的新版本。
 
 已验证：
 
-- 插件手动安装、依赖安装和加载。
-- 插件配置表单可访问。
-- 已安装插件侧栏导航可用。
-
-尚未验证：
-
-- 真实 115 分享链接转存。
-- 完整 STRM 生成和整理流程。
-- 消息渠道接收链接后的结果回传。
-- 媒体服务器刷新。
+- 插件手动安装、依赖安装和加载；
+- 插件配置表单与已安装插件侧栏导航；
+- 真实 115 分享链接转存；
+- 完整 STRM 生成及文件可读；
+- 消息渠道接收链接后的结果回传；
+- Emby、Jellyfin、Plex 媒体库刷新。
 
 ## 7. 升级与回退
 
